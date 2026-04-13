@@ -1,0 +1,28 @@
+[
+  {
+    "question": "Summarize the main risks and opportunities described in the internal project corpus.",
+    "top_k": 3,
+    "expected_tool": "vector_search",
+    "acceptance_criteria": [
+      "The answer must cite evidence.",
+      "The answer must include at least one source from the internal index."
+    ]
+  },
+  {
+    "question": "How many records exist in the indexed dataset?",
+    "top_k": 3,
+    "expected_tool": "sql_query",
+    "acceptance_criteria": [
+      "The answer must trigger structured retrieval."
+    ]
+  },
+  {
+    "question": "Which public sources explain this topic best?",
+    "top_k": 4,
+    "expected_tool": "web_search",
+    "acceptance_criteria": [
+      "The answer must list web sources.",
+      "The answer must include execution trace data."
+    ]
+  }
+]

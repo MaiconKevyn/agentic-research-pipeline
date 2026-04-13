@@ -1,0 +1,32 @@
+[
+  {
+    "document_id": "project-overview",
+    "title": "Phase 1 objective",
+    "content": "Phase 1 aims to build a small, reliable, and testable research agent. The main focus is explicit orchestration, Pydantic validation, integration with FastAPI and a React frontend, use of PostgreSQL with pgvector, and automated evaluation.",
+    "source_type": "internal",
+    "source_url": null,
+    "metadata": {
+      "topic": "overview"
+    }
+  },
+  {
+    "document_id": "project-agent-flow",
+    "title": "Agent workflow",
+    "content": "The planned workflow includes question classification, collection planning, tool execution, evidence consolidation, structured answer generation, and automatic evaluation of final quality.",
+    "source_type": "internal",
+    "source_url": null,
+    "metadata": {
+      "topic": "agent-flow"
+    }
+  },
+  {
+    "document_id": "project-scope-boundaries",
+    "title": "Phase 1 boundaries",
+    "content": "Fine-tuning, Redis, MongoDB, WebSockets, and a full MCP server remain out of scope for phase 1. The goal is to prioritize a functional baseline that is easy to debug and built around clear contracts before expanding the architecture.",
+    "source_type": "internal",
+    "source_url": null,
+    "metadata": {
+      "topic": "scope"
+    }
+  }
+]
