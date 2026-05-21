@@ -15,7 +15,10 @@ RAW_DIR = ROOT_DIR / "data" / "raw"
 
 def main() -> None:
     inserted = ingest_pdf_corpus(RAW_DIR, replace_existing=True)
-    print(f"Ingested {inserted} PDF chunks into PostgreSQL.")
+    print(
+        f"Ingested {inserted} PDF chunks into PostgreSQL. "
+        "Per-document reports were written to ingestion_reports/."
+    )
 
 
 if __name__ == "__main__":

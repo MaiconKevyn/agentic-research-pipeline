@@ -279,8 +279,11 @@ The ingestion pipeline performs the following steps:
 1. **Load PDFs** from `data/raw`
 2. **Extract text** using LangChain-compatible PDF tooling
 3. **Normalize sections** and split content into structural chunks
-4. **Generate embeddings** for each chunk
-5. **Store source documents, pages, chunks, and embeddings** in PostgreSQL + pgvector
+4. **Add contextual headers** with document, section, and page location before embedding
+5. **Generate embeddings** from contextualized text while preserving the raw chunk text
+6. **Store source documents, pages, chunks, and embeddings** in PostgreSQL + pgvector
+
+The ingestion service now produces deterministic chunk IDs, checksum-based source document identities, parent-child chunk metadata, and per-document JSON reports under `ingestion_reports/` by default. Reports include pages processed, chunks created, skipped chunks, extraction warnings, token distribution, duplicate percentage, and raw-vs-contextual embedding text size.
 
 ### Indexed Corpus
 The current internal corpus is focused on:
@@ -290,7 +293,7 @@ The current internal corpus is focused on:
 - LangGraph / LangChain
 - Evaluation
 
-The corpus is built from the PDFs in `data/raw`. The exact indexed chunk count may change as documents are added, removed, or re-ingested. See [project.md](project.md) for the latest recorded project status.
+The corpus is built from the PDFs in `data/raw`. The exact source document and indexed chunk counts may change as documents are added, removed, or re-ingested. See [project.md](project.md) for the latest recorded project status.
 
 ## Evaluation
 The project includes a golden-set evaluation harness intended to grow over time.

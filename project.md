@@ -46,6 +46,7 @@ Completed:
 - each `/research` response now includes `run_id`, `corpus_version_id`, source document count, and chunk count.
 - `sql_query` now reports source document count and chunk count separately for operational corpus questions.
 - golden-set evaluation harness added with JSONL cases, score reports, thresholds, and a CI-safe CLI mode.
+- PDF ingestion now uses deterministic checksum-based document identity, contextualized embedding text, parent-child chunk metadata, and per-document JSON ingestion reports.
 
 ### Current Agent Status
 
@@ -88,7 +89,8 @@ The critical outputs in the workflow already have explicit schemas:
 - corpus theme: `Python / RAG / Agentic / LangGraph / evaluation`;
 - source: PDFs stored in `data/raw`;
 - real ingestion implemented through `scripts/ingest_raw_pdfs.py`;
-- current chunking strategy: structural chunking by page and section, with size limits;
+- current chunking strategy: structural chunking by page and section, contextual headers for embeddings, deterministic chunk IDs, and parent-child chunk metadata;
+- ingestion reports: generated under `ingestion_reports/` with pages processed, chunks created, skipped chunks, warnings, token distribution, duplicate percentage, and contextualization size comparison;
 - currently indexed corpus: `155 chunks` from the real PDFs.
 
 ### What the Agent Already Returns
@@ -102,6 +104,9 @@ Each internal source may currently include:
 
 - `source_file`;
 - `section_title`;
+- `source_document_id`;
+- `parent_chunk_id`;
+- `contextual_header`;
 - `page_start` and `page_end`;
 - `retrieval_rank`;
 - `retrieval_distance`;
