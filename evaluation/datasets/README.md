@@ -2,7 +2,7 @@
 
 This folder stores the original sample benchmark questions for the research agent.
 
-The product-grade golden set now lives in `evaluation/golden/*.jsonl`.
+The product-grade golden set now lives in `evaluation/golden/*.jsonl`; `evaluation/golden/smoke.jsonl` is the default 50-case CI gate.
 `evaluation/golden/retrieval.jsonl` is the retrieval-focused seed set for Recall@K, MRR, nDCG, and insufficient-evidence checks.
 
 Required fields per golden item:
@@ -22,6 +22,12 @@ Run the CI-safe harness:
 
 ```bash
 PYTHONPATH=. ./.venv/bin/python -m evaluation.run_eval --mode mock --fail-on-threshold
+```
+
+Run it with historical baseline comparison:
+
+```bash
+PYTHONPATH=. ./.venv/bin/python -m evaluation.run_eval --mode mock --fail-on-threshold --baseline evaluation/reports/baseline.json
 ```
 
 Run the live graph over the golden set:

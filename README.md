@@ -308,7 +308,7 @@ Current runtime metrics include:
 - `schema_validity`
 - `scope_compliance` for out-of-scope refusals
 
-The golden harness stores JSONL cases in `evaluation/golden/` with required sources, expected facts, forbidden claims, rubrics, difficulty, and query category. It writes JSONL reports to `evaluation/reports/` and checks the initial product thresholds for:
+The golden harness stores JSONL cases in `evaluation/golden/` with required sources, expected facts, forbidden claims, rubrics, difficulty, and query category. The default golden set has 50 cases across factual, comparison, operational, ambiguous, insufficient-evidence, adversarial, web-needed, and citation-stress categories. It writes case-level JSONL plus a summary scorecard to `evaluation/reports/`, checks the product thresholds, and can compare against a historical baseline.
 - `schema_validity`
 - `scope_compliance`
 - `citation_precision`
@@ -336,12 +336,12 @@ Run the test suite with:
 
 Run the CI-safe evaluation harness with:
 ```bash
-./.venv/bin/python -m evaluation.run_eval --mode mock --fail-on-threshold
+./.venv/bin/python -m evaluation.run_eval --mode mock --fail-on-threshold --baseline evaluation/reports/baseline.json
 ```
 
 Run the live graph over the golden set with:
 ```bash
-./.venv/bin/python -m evaluation.run_eval --mode live --output evaluation/reports/latest.jsonl
+./.venv/bin/python -m evaluation.run_eval --mode live --output evaluation/reports/latest.jsonl --baseline evaluation/reports/baseline.json
 ```
 
 ## System Design

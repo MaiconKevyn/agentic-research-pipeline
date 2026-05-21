@@ -13,6 +13,8 @@ from evaluation.metrics import mean_reciprocal_rank, ndcg_at_k, recall_at_k
 DATASET_PATH = Path(__file__).parent / "datasets" / "sample_questions.json"
 GOLDEN_DATASET_PATH = Path(__file__).parent / "golden" / "smoke.jsonl"
 DEFAULT_REPORT_PATH = Path(__file__).parent / "reports" / "latest.jsonl"
+DEFAULT_BASELINE_PATH = Path(__file__).parent / "reports" / "baseline.json"
+BASELINE_REGRESSION_TOLERANCE = 0.02
 
 THRESHOLDS = {
     "schema_validity": 1.00,
@@ -50,6 +52,9 @@ class EvaluationSummary:
     thresholds: dict[str, float]
     thresholds_passed: bool
     output_path: Path
+    baseline_path: Path | None = None
+    baseline_metrics: dict[str, float] | None = None
+    regressions: list[str] | None = None
 
 
 RunFunc = Callable[[str, int], ResearchResponse]
@@ -74,6 +79,14 @@ def load_golden_cases(dataset_path: Path = GOLDEN_DATASET_PATH) -> list[GoldenCa
     return cases
 
 
+def load_all_golden_cases(golden_dir: Path | None = None) -> list[GoldenCase]:
+    target_dir = golden_dir or GOLDEN_DATASET_PATH.parent
+    cases: list[GoldenCase] = []
+    for dataset_path in sorted(target_dir.glob("*.jsonl")):
+        cases.extend(load_golden_cases(dataset_path))
+    return cases
+
+
 def run_benchmark() -> list[dict]:
     results: list[dict] = []
     for item in load_dataset():
@@ -93,6 +106,7 @@ def run_evaluation(
     *,
     dataset_path: Path = GOLDEN_DATASET_PATH,
     output_path: Path = DEFAULT_REPORT_PATH,
+    baseline_path: Path | None = None,
     run_func: RunFunc = run_research,
 ) -> EvaluationSummary:
     cases = load_golden_cases(dataset_path)
@@ -122,14 +136,24 @@ def run_evaluation(
             report_file.write(json.dumps(result, sort_keys=True) + "\n")
 
     metrics = _aggregate_metrics([result["scores"] for result in scored_cases])
-    thresholds_passed = all(metrics.get(metric, 0.0) >= threshold for metric, threshold in THRESHOLDS.items())
-    return EvaluationSummary(
+    baseline_metrics = _load_baseline_metrics(baseline_path)
+    regressions = _detect_regressions(metrics=metrics, baseline_metrics=baseline_metrics)
+    thresholds_passed = (
+        all(metrics.get(metric, 0.0) >= threshold for metric, threshold in THRESHOLDS.items())
+        and not regressions
+    )
+    summary = EvaluationSummary(
         case_count=len(scored_cases),
         metrics=metrics,
         thresholds=THRESHOLDS,
         thresholds_passed=thresholds_passed,
         output_path=output_path,
+        baseline_path=baseline_path,
+        baseline_metrics=baseline_metrics,
+        regressions=regressions,
     )
+    _write_summary_report(summary)
+    return summary
 
 
 def _case_from_legacy_item(item: dict) -> GoldenCase:
@@ -193,6 +217,53 @@ def _aggregate_metrics(case_scores: list[dict[str, float]]) -> dict[str, float]:
         metric: _mean(score[metric] for score in case_scores)
         for metric in THRESHOLDS
     }
+
+
+def _load_baseline_metrics(baseline_path: Path | None) -> dict[str, float] | None:
+    if baseline_path is None or not baseline_path.exists():
+        return None
+    payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+    metrics = payload.get("metrics", payload)
+    return {
+        metric: float(value)
+        for metric, value in metrics.items()
+        if isinstance(value, int | float)
+    }
+
+
+def _detect_regressions(
+    *,
+    metrics: dict[str, float],
+    baseline_metrics: dict[str, float] | None,
+    tolerance: float = BASELINE_REGRESSION_TOLERANCE,
+) -> list[str]:
+    if not baseline_metrics:
+        return []
+    regressions: list[str] = []
+    for metric, baseline_value in baseline_metrics.items():
+        if metric in metrics and metrics[metric] < baseline_value - tolerance:
+            regressions.append(metric)
+    return regressions
+
+
+def _write_summary_report(summary: EvaluationSummary) -> None:
+    summary_path = summary.output_path.with_suffix(".summary.json")
+    summary_path.write_text(
+        json.dumps(
+            {
+                "case_count": summary.case_count,
+                "metrics": summary.metrics,
+                "thresholds": summary.thresholds,
+                "thresholds_passed": summary.thresholds_passed,
+                "baseline_path": str(summary.baseline_path) if summary.baseline_path else None,
+                "baseline_metrics": summary.baseline_metrics,
+                "regressions": summary.regressions,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _mean(values: object) -> float:

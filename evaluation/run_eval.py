@@ -12,6 +12,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the golden-set research evaluation harness.")
     parser.add_argument("--dataset", type=Path, default=GOLDEN_DATASET_PATH)
     parser.add_argument("--output", type=Path, default=DEFAULT_REPORT_PATH)
+    parser.add_argument("--baseline", type=Path, default=None)
     parser.add_argument(
         "--mode",
         choices=("live", "mock"),
@@ -25,6 +26,7 @@ def main() -> int:
     summary = run_evaluation(
         dataset_path=args.dataset,
         output_path=args.output,
+        baseline_path=args.baseline,
         **({"run_func": run_func} if run_func else {}),
     )
     for metric, score in sorted(summary.metrics.items()):
@@ -32,6 +34,10 @@ def main() -> int:
         print(f"{metric}: {score:.3f} (threshold {threshold:.3f})")
     print(f"cases: {summary.case_count}")
     print(f"report: {summary.output_path}")
+    if summary.baseline_path:
+        print(f"baseline: {summary.baseline_path}")
+    if summary.regressions:
+        print(f"regressions: {','.join(summary.regressions)}")
 
     if args.fail_on_threshold and not summary.thresholds_passed:
         return 1
@@ -40,10 +46,26 @@ def main() -> int:
 
 def _mock_run(question: str, top_k: int = 5) -> ResearchResponse:
     source_id = "mock-source"
+    lowered = question.lower()
     answer = "Insufficient evidence: this request is outside the project scope."
     sources: list[SourceItem] = []
     trace = ["scope_guardrail_triggered"]
-    if "football" not in question.lower() and "unrelated" not in question.lower():
+    should_abstain = any(
+        marker in lowered
+        for marker in (
+            "football",
+            "unrelated",
+            "ignore previous",
+            "system prompt",
+            "developer message",
+            "secret",
+            "exfiltrate",
+            "malicious",
+            "weather",
+            "stock price",
+        )
+    )
+    if not should_abstain:
         answer = "The corpus says retrieval grounds RAG answers in source evidence [mock-source]."
         sources = [
             SourceItem(

@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import json
+
 from backend.app.schemas.research import CorpusStats, ResearchResponse
-from evaluation.runner import run_evaluation
+from evaluation.runner import GOLDEN_DATASET_PATH, load_golden_cases, run_evaluation
 
 
 def test_run_evaluation_scores_golden_cases_and_writes_jsonl_report(tmp_path: Path) -> None:
@@ -65,6 +67,7 @@ def test_run_evaluation_scores_golden_cases_and_writes_jsonl_report(tmp_path: Pa
 
     assert summary.case_count == 2
     assert summary.thresholds_passed is True
+    assert summary.regressions == []
     assert summary.metrics["schema_validity"] == 1.0
     assert summary.metrics["scope_compliance"] == 1.0
     assert summary.metrics["citation_precision"] == 1.0
@@ -72,3 +75,67 @@ def test_run_evaluation_scores_golden_cases_and_writes_jsonl_report(tmp_path: Pa
     assert summary.metrics["retrieval_ndcg_at_10"] == 1.0
     assert report_path.exists()
     assert len(report_path.read_text(encoding="utf-8").strip().splitlines()) == 2
+    summary_path = report_path.with_suffix(".summary.json")
+    assert summary_path.exists()
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary_payload["case_count"] == 2
+    assert summary_payload["metrics"]["schema_validity"] == 1.0
+
+
+def test_run_evaluation_detects_metric_regressions_against_baseline(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "golden.jsonl"
+    dataset_path.write_text(
+        (
+            '{"id":"rag-basics","question":"What does the corpus say about RAG?",'
+            '"expected_answer_type":"factual","required_sources":["missing-source"],'
+            '"expected_facts":["retrieval"],"forbidden_claims":[],'
+            '"answer_rubric":"Answer from corpus evidence.","difficulty":"easy",'
+            '"query_category":"internal_corpus_factual_qa"}\n'
+        ),
+        encoding="utf-8",
+    )
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps({"metrics": {"retrieval_recall_at_10": 0.90, "groundedness": 0.90}}),
+        encoding="utf-8",
+    )
+
+    def fake_run(question: str, top_k: int = 5) -> ResearchResponse:
+        return ResearchResponse(
+            run_id="run-1",
+            corpus_version_id="corpus-v1",
+            corpus_stats=CorpusStats(source_document_count=1, chunk_count=3, corpus_version_id="corpus-v1"),
+            question=question,
+            answer="The corpus says retrieval matters.",
+            sources=[],
+            evaluation=[],
+            execution_trace=[],
+        )
+
+    summary = run_evaluation(
+        dataset_path=dataset_path,
+        output_path=tmp_path / "report.jsonl",
+        baseline_path=baseline_path,
+        run_func=fake_run,
+    )
+
+    assert summary.thresholds_passed is False
+    assert "retrieval_recall_at_10" in summary.regressions
+    assert "groundedness" in summary.regressions
+
+
+def test_default_golden_dataset_has_required_50_case_coverage() -> None:
+    cases = load_golden_cases(GOLDEN_DATASET_PATH)
+    categories = {case.query_category for case in cases}
+
+    assert len(cases) >= 50
+    assert {
+        "internal_corpus_factual_qa",
+        "comparison",
+        "operational",
+        "ambiguous",
+        "insufficient_evidence",
+        "adversarial_prompt_injection",
+        "web_needed",
+        "citation_stress_test",
+    } <= categories

@@ -35,7 +35,7 @@ jobs:
         run: PYTHONPATH=. python -m pytest
 
       - name: Run golden evaluation harness
-        run: PYTHONPATH=. python -m evaluation.run_eval --mode mock --fail-on-threshold
+        run: PYTHONPATH=. python -m evaluation.run_eval --mode mock --fail-on-threshold --baseline evaluation/reports/baseline.json
 
       - name: Build frontend
         working-directory: frontend

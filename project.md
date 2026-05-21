@@ -50,6 +50,7 @@ Completed:
 - hybrid retrieval added with PostgreSQL full-text search, dense + lexical Reciprocal Rank Fusion, retrieval quality grading, corrective web escalation, and weak-evidence abstention.
 - retrieval evaluation metrics now include `Recall@K`, `MRR`, and `nDCG`.
 - claim-level synthesis added with supporting source IDs, supporting quotes, verifier-based unsupported claim removal, claim evidence persistence, and UI claim-to-source display.
+- evaluation harness now has a 50-case default golden set, adversarial and insufficient-evidence coverage, summary scorecards, CI threshold gates, and historical baseline comparison.
 
 ### Current Agent Status
 
