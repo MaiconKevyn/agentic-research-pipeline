@@ -269,6 +269,7 @@ Each response includes:
 - **`corpus_version_id`**: corpus snapshot used by the run
 - **`corpus_stats`**: source document and indexed chunk counts
 - **`answer`**: final synthesized answer
+- **`claims`**: verified claim-level answer structure with source IDs and supporting quotes
 - **`sources`**: structured evidence used by the system
 - **`evaluation`**: heuristic metrics for the answer
 - **`execution_trace`**: step-by-step trace of the agent workflow
@@ -301,6 +302,7 @@ The project includes a golden-set evaluation harness intended to grow over time.
 
 Current runtime metrics include:
 - `groundedness`
+- `claim_support`
 - `answer_completeness`
 - `evidence_sufficiency`
 - `schema_validity`
@@ -350,8 +352,9 @@ The agent follows a fixed high-level flow:
 3. **Collect** evidence from hybrid internal retrieval, corrective web search, or SQL
 4. **Grade** retrieval quality as sufficient, partial, weak, or irrelevant
 5. **Rerank** evidence globally
-6. **Synthesize** an answer with structured output or abstain on weak evidence
-7. **Evaluate** the response before returning it
+6. **Synthesize** a claim-level answer with source quotes or abstain on weak evidence
+7. **Verify** claim support and remove unsupported claims
+8. **Evaluate** the response before returning it
 
 If the question is outside the project domain, the workflow exits early with a scope refusal instead of running retrieval.
 
@@ -368,7 +371,7 @@ Critical workflow steps use explicit Pydantic schemas, including:
 - `QuestionClassification`
 - `ResearchPlan`
 - `EvidenceCollection`
-- `SynthesisOutput`
+- `SynthesisOutput` with `answer_summary`, `claims`, `supporting_source_ids`, `supporting_quotes`, `limitations`, `conflicts`, and `follow_up_questions`
 - `EvaluationResult`
 
 This keeps the pipeline predictable and easier to validate.

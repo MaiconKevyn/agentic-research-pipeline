@@ -10,8 +10,11 @@ def test_generate_research_answer_uses_structured_output_and_validates_schema() 
     mocked_response.raise_for_status.return_value = None
     mocked_response.json.return_value = {
         "output_text": (
-            '{"answer":"Objective answer.","confidence":"medium",'
-            '"cited_source_ids":["source-1"],"uncertainty_note":null}'
+            '{"answer_summary":"Objective answer.","confidence":"medium",'
+            '"claims":[{"claim_text":"Objective answer.","supporting_source_ids":["source-1"],'
+            '"supporting_quotes":[{"source_id":"source-1","quote":"Important passage"}],'
+            '"confidence":"medium","limitations":[],"conflicts":[],"support_status":"supported"}],'
+            '"limitations":[],"conflicts":[],"follow_up_questions":[],"uncertainty_note":null}'
         )
     }
 
@@ -44,5 +47,6 @@ def test_generate_research_answer_uses_structured_output_and_validates_schema() 
     _, kwargs = mocked_post.call_args
     assert kwargs["json"]["text"]["format"]["type"] == "json_schema"
     assert kwargs["json"]["text"]["format"]["strict"] is True
-    assert synthesis.answer == "Objective answer."
-    assert synthesis.cited_source_ids == ["source-1"]
+    assert synthesis.answer_summary == "Objective answer."
+    assert synthesis.claims[0].supporting_source_ids == ["source-1"]
+    assert synthesis.claims[0].supporting_quotes[0].quote == "Important passage"

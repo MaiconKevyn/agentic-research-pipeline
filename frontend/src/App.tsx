@@ -15,6 +15,21 @@ type EvaluationScore = {
   rationale: string;
 };
 
+type ClaimEvidence = {
+  source_id: string;
+  quote: string;
+};
+
+type AnswerClaim = {
+  claim_text: string;
+  supporting_source_ids: string[];
+  supporting_quotes: ClaimEvidence[];
+  confidence: "low" | "medium" | "high";
+  limitations: string[];
+  conflicts: string[];
+  support_status: "supported" | "unsupported" | "conflicting";
+};
+
 type CorpusStats = {
   source_document_count: number;
   chunk_count: number;
@@ -27,6 +42,7 @@ type ResearchResponse = {
   corpus_stats: CorpusStats;
   question: string;
   answer: string;
+  claims: AnswerClaim[];
   sources: SourceItem[];
   evaluation: EvaluationScore[];
   execution_trace: string[];
@@ -190,6 +206,39 @@ function App() {
                 <p className="section-label">Answer</p>
                 <p className="answer-text">{result.answer}</p>
               </section>
+
+              {result.claims.length ? (
+                <section className="claims-section">
+                  <div className="section-heading">
+                    <p className="section-label">Claims</p>
+                    <span>{result.claims.length} verified</span>
+                  </div>
+                  <div className="claim-list">
+                    {result.claims.map((claim) => (
+                      <article key={claim.claim_text} className="claim-card">
+                        <div className="claim-topline">
+                          <span className="source-type">{claim.support_status}</span>
+                          <span className="source-rank">{claim.confidence}</span>
+                        </div>
+                        <p>{claim.claim_text}</p>
+                        <div className="source-meta">
+                          {claim.supporting_source_ids.map((sourceId) => (
+                            <span key={sourceId} className="meta-chip">
+                              {sourceId}
+                            </span>
+                          ))}
+                        </div>
+                        {claim.supporting_quotes.map((quote) => (
+                          <blockquote key={`${quote.source_id}-${quote.quote}`}>
+                            <strong>{quote.source_id}</strong>
+                            {quote.quote}
+                          </blockquote>
+                        ))}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <section className="metrics-grid">
                 {result.evaluation.map((metric) => (

@@ -1,7 +1,14 @@
 from unittest.mock import patch
 
 from backend.app.api.routes.research import research
-from backend.app.schemas.research import CorpusStats, ResearchRequest, SourceItem, SynthesisOutput
+from backend.app.schemas.research import (
+    AnswerClaim,
+    ClaimEvidence,
+    CorpusStats,
+    ResearchRequest,
+    SourceItem,
+    SynthesisOutput,
+)
 
 
 def test_research_route_returns_structured_response() -> None:
@@ -47,9 +54,21 @@ def test_research_route_returns_structured_response() -> None:
         patch(
             "agent.nodes.generate_research_answer",
             return_value=SynthesisOutput(
-                answer="Final answer grounded in the evidence [1] [2].",
+                answer_summary="Final answer grounded in the evidence.",
                 confidence="high",
-                cited_source_ids=["web-1", "vector-1"],
+                claims=[
+                    AnswerClaim(
+                        claim_text="Final answer grounded in the evidence.",
+                        supporting_source_ids=["web-1"],
+                        supporting_quotes=[
+                            ClaimEvidence(source_id="web-1", quote="Official documentation passage.")
+                        ],
+                        confidence="high",
+                    )
+                ],
+                limitations=[],
+                conflicts=[],
+                follow_up_questions=[],
                 uncertainty_note=None,
             ),
         ),
@@ -66,7 +85,9 @@ def test_research_route_returns_structured_response() -> None:
     assert response.corpus_version_id == "corpus-v1"
     assert response.corpus_stats.source_document_count == 2
     assert response.corpus_stats.chunk_count == 7
-    assert response.answer == "Final answer grounded in the evidence [1] [2]."
+    assert response.answer == "Final answer grounded in the evidence."
+    assert response.claims[0].claim_text == "Final answer grounded in the evidence."
+    assert response.claims[0].supporting_quotes[0].source_id == "web-1"
     assert len(response.sources) == 2
     assert response.sources[0].source_type == "web"
     assert response.evaluation
@@ -176,9 +197,21 @@ def test_research_route_skips_web_search_when_internal_retrieval_is_sufficient()
         patch(
             "agent.nodes.generate_research_answer",
             return_value=SynthesisOutput(
-                answer="The corpus supports the answer [source-1].",
+                answer_summary="The corpus supports the answer.",
                 confidence="high",
-                cited_source_ids=["source-1"],
+                claims=[
+                    AnswerClaim(
+                        claim_text="The corpus supports the answer.",
+                        supporting_source_ids=["source-1"],
+                        supporting_quotes=[
+                            ClaimEvidence(source_id="source-1", quote="Grounded RAG retrieval evidence.")
+                        ],
+                        confidence="high",
+                    )
+                ],
+                limitations=[],
+                conflicts=[],
+                follow_up_questions=[],
                 uncertainty_note=None,
             ),
         ),
@@ -192,5 +225,77 @@ def test_research_route_skips_web_search_when_internal_retrieval_is_sufficient()
 
     mocked_web_search.assert_not_called()
     assert len(response.sources) == 3
+    assert len(response.claims) == 1
     assert "retrieval_quality=sufficient" in response.execution_trace
     assert "corrective_web_search_skipped" in response.execution_trace
+
+
+def test_research_route_blocks_unsupported_synthesis_claims() -> None:
+    sources = [
+        SourceItem(
+            source_id="source-1",
+            title="Internal source",
+            snippet="The agent uses LangGraph for orchestration.",
+            source_type="pdf_chunk",
+            url=None,
+            metadata={"retrieval_path": "hybrid", "hybrid_rank": 1},
+        )
+    ]
+
+    with (
+        patch("agent.graph.get_or_create_current_corpus_version_id", return_value="corpus-v1"),
+        patch("agent.graph.record_research_run", return_value=None),
+        patch(
+            "agent.graph.get_corpus_stats",
+            return_value=CorpusStats(
+                source_document_count=1,
+                chunk_count=1,
+                corpus_version_id="corpus-v1",
+            ),
+        ),
+        patch("agent.nodes.search_documents", return_value=sources),
+        patch("agent.nodes.search_web", return_value=[]),
+        patch("agent.nodes.rerank_sources_global", return_value=sources),
+        patch(
+            "agent.nodes.generate_research_answer",
+            return_value=SynthesisOutput(
+                answer_summary="The agent uses LangGraph. It also fine-tunes a private model.",
+                confidence="high",
+                claims=[
+                    AnswerClaim(
+                        claim_text="The agent uses LangGraph.",
+                        supporting_source_ids=["source-1"],
+                        supporting_quotes=[
+                            ClaimEvidence(
+                                source_id="source-1",
+                                quote="The agent uses LangGraph for orchestration.",
+                            )
+                        ],
+                        confidence="high",
+                    ),
+                    AnswerClaim(
+                        claim_text="It also fine-tunes a private model.",
+                        supporting_source_ids=[],
+                        supporting_quotes=[],
+                        confidence="high",
+                    ),
+                ],
+                limitations=[],
+                conflicts=[],
+                follow_up_questions=[],
+                uncertainty_note=None,
+            ),
+        ),
+    ):
+        response = research(
+            ResearchRequest(
+                question="How does this project orchestrate the agent?",
+                top_k=1,
+            )
+        )
+
+    assert response.answer == "The agent uses LangGraph."
+    assert [claim.claim_text for claim in response.claims] == ["The agent uses LangGraph."]
+    assert "It also fine-tunes a private model." not in response.answer
+    assert "claim_verification_removed=1" in response.execution_trace
+    assert "claim_verification_complete" in response.execution_trace

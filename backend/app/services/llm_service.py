@@ -58,7 +58,10 @@ def build_research_messages(question: str, sources: list[SourceItem]) -> list[di
         "Answer only with information grounded in the provided evidence. "
         "If evidence is weak or incomplete, say so clearly. "
         "Use concise English prose. "
-        "Populate cited_source_ids only with source_id values that appear in the evidence. "
+        "Return claim-level output. Every claim must include supporting_source_ids and "
+        "short supporting_quotes copied from the provided evidence. "
+        "Use only source_id values that appear in the evidence. "
+        "If a claim is inference rather than evidence, mark low confidence and include a limitation. "
         "Set confidence conservatively and use uncertainty_note when evidence is incomplete."
     )
     user_message = "\n\n".join(
@@ -66,7 +69,7 @@ def build_research_messages(question: str, sources: list[SourceItem]) -> list[di
             f"Question: {question}",
             "Available evidence:",
             "\n\n".join(evidence_lines) if evidence_lines else "No evidence available.",
-            "Task: produce a concise answer, cite the relevant evidence, and highlight any uncertainty.",
+            "Task: produce a concise answer_summary, claim-level evidence links, limitations, conflicts, and follow-up questions.",
         ]
     )
     return [
@@ -112,16 +115,35 @@ def _extract_refusal_text(payload: dict[str, Any]) -> str | None:
     return refusal_text or None
 
 
-def _validate_cited_source_ids(synthesis: SynthesisOutput, sources: list[SourceItem]) -> SynthesisOutput:
+def _validate_claim_source_ids(synthesis: SynthesisOutput, sources: list[SourceItem]) -> SynthesisOutput:
     valid_source_ids = {source.source_id for source in sources}
-    filtered_source_ids = [
-        source_id
-        for source_id in synthesis.cited_source_ids
-        if source_id in valid_source_ids
-    ]
-    if filtered_source_ids == synthesis.cited_source_ids:
-        return synthesis
-    return synthesis.model_copy(update={"cited_source_ids": filtered_source_ids})
+    claims = []
+    changed = False
+    for claim in synthesis.claims:
+        filtered_source_ids = [
+            source_id
+            for source_id in claim.supporting_source_ids
+            if source_id in valid_source_ids
+        ]
+        filtered_quotes = [
+            quote
+            for quote in claim.supporting_quotes
+            if quote.source_id in valid_source_ids
+        ]
+        changed = (
+            changed
+            or filtered_source_ids != claim.supporting_source_ids
+            or filtered_quotes != claim.supporting_quotes
+        )
+        claims.append(
+            claim.model_copy(
+                update={
+                    "supporting_source_ids": filtered_source_ids,
+                    "supporting_quotes": filtered_quotes,
+                }
+            )
+        )
+    return synthesis.model_copy(update={"claims": claims}) if changed else synthesis
 
 
 def generate_research_answer(question: str, sources: list[SourceItem]) -> SynthesisOutput:
@@ -133,7 +155,7 @@ def generate_research_answer(question: str, sources: list[SourceItem]) -> Synthe
     payload = {
         "model": settings.openai_model,
         "input": build_research_messages(question=question, sources=sources),
-        "max_output_tokens": 500,
+        "max_output_tokens": 900,
         "text": {
             "format": {
                 "type": "json_schema",
@@ -180,4 +202,4 @@ def generate_research_answer(question: str, sources: list[SourceItem]) -> Synthe
     except Exception as exc:
         raise LLMServiceError(f"OpenAI structured output failed schema validation: {exc}") from exc
 
-    return _validate_cited_source_ids(synthesis, sources)
+    return _validate_claim_source_ids(synthesis, sources)

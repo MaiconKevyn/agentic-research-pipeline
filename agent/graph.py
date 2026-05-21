@@ -9,6 +9,7 @@ from agent.nodes import (
     evaluate_answer,
     plan_research,
     synthesize_answer,
+    verify_synthesis,
 )
 from agent.state import ResearchState
 from backend.app.core.config import settings
@@ -28,13 +29,15 @@ def build_research_graph():
     builder.add_node("plan_research", plan_research)
     builder.add_node("collect_evidence", collect_evidence)
     builder.add_node("synthesize_answer", synthesize_answer)
+    builder.add_node("verify_synthesis", verify_synthesis)
     builder.add_node("evaluate_answer", evaluate_answer)
 
     builder.add_edge(START, "classify_question")
     builder.add_edge("classify_question", "plan_research")
     builder.add_edge("plan_research", "collect_evidence")
     builder.add_edge("collect_evidence", "synthesize_answer")
-    builder.add_edge("synthesize_answer", "evaluate_answer")
+    builder.add_edge("synthesize_answer", "verify_synthesis")
+    builder.add_edge("verify_synthesis", "evaluate_answer")
     builder.add_edge("evaluate_answer", END)
     return builder.compile()
 
@@ -67,6 +70,7 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
         "selected_tools": [],
         "sources": [],
         "answer": "",
+        "claims": [],
         "evaluation": [],
         "execution_trace": [f"run_id={run_id}", *version_trace],
     }
@@ -98,6 +102,7 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
                 selected_tools=selected_tools,
                 model=settings.openai_model,
                 answer=final_state["answer"],
+                claims=final_state["claims"],
                 sources=final_state["sources"],
                 evaluation_scores=final_state["evaluation"],
                 execution_trace=final_state["execution_trace"],
@@ -117,6 +122,7 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
         corpus_stats=corpus_stats,
         question=final_state["question"],
         answer=final_state["answer"],
+        claims=final_state["claims"],
         sources=final_state["sources"],
         evaluation=final_state["evaluation"],
         execution_trace=final_state["execution_trace"],

@@ -14,6 +14,7 @@ from backend.app.schemas.research import (
 )
 from backend.app.services.llm_service import LLMServiceError, generate_research_answer
 from backend.app.services.rerank_service import RerankServiceError, rerank_sources_global
+from backend.app.services.synthesis_verifier import verify_synthesis_claims
 
 
 PROJECT_SCOPE_KEYWORDS = (
@@ -295,14 +296,18 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
     if classification and classification.query_kind == "off_topic":
         execution_trace.append("scope_guardrail_response")
         synthesis = SynthesisOutput(
-            answer=OFF_TOPIC_MESSAGE,
+            answer_summary=OFF_TOPIC_MESSAGE,
             confidence="high",
-            cited_source_ids=[],
+            claims=[],
+            limitations=[],
+            conflicts=[],
+            follow_up_questions=[],
             uncertainty_note="Question was rejected because it is out of scope for this project.",
         )
         return {
             "synthesis": synthesis,
-            "answer": synthesis.answer,
+            "answer": synthesis.answer_summary,
+            "claims": [],
             "execution_trace": execution_trace,
         }
 
@@ -313,14 +318,18 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
             "to answer this question without risking an unsupported claim."
         )
         synthesis = SynthesisOutput(
-            answer=answer,
+            answer_summary=answer,
             confidence="low",
-            cited_source_ids=[],
+            claims=[],
+            limitations=["Retrieval quality was too weak for grounded synthesis."],
+            conflicts=[],
+            follow_up_questions=[],
             uncertainty_note="Retrieval quality was too weak for grounded synthesis.",
         )
         return {
             "synthesis": synthesis,
             "answer": answer,
+            "claims": [],
             "execution_trace": execution_trace,
         }
 
@@ -329,6 +338,7 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
             "answer": (
                 "Insufficient evidence: no usable sources were collected for grounded synthesis."
             ),
+            "claims": [],
             "execution_trace": execution_trace,
         }
 
@@ -338,10 +348,10 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
             question=state["question"],
             sources=state["sources"],
         )
-        answer = synthesis.answer
+        answer = synthesis.answer_summary
         execution_trace.append("llm_synthesis_success")
         execution_trace.append(f"synthesis_confidence={synthesis.confidence}")
-        execution_trace.append(f"synthesis_citations={len(synthesis.cited_source_ids)}")
+        execution_trace.append(f"synthesis_claims={len(synthesis.claims)}")
     except LLMServiceError as exc:
         execution_trace.append(f"llm_synthesis_error={exc}")
         source_titles = ", ".join(source.title for source in state["sources"][:3])
@@ -354,6 +364,32 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
     return {
         "synthesis": synthesis,
         "answer": answer,
+        "claims": synthesis.claims if synthesis else [],
+        "execution_trace": execution_trace,
+    }
+
+
+def verify_synthesis(state: ResearchState) -> ResearchState:
+    execution_trace = [*state["execution_trace"], "verifying_claims"]
+    synthesis = state["synthesis"]
+    if synthesis is None:
+        execution_trace.append("claim_verification_skipped")
+        return {
+            "claims": [],
+            "execution_trace": execution_trace,
+        }
+
+    verified = verify_synthesis_claims(
+        synthesis=synthesis,
+        sources=state["sources"],
+    )
+    removed_count = len(synthesis.claims) - len(verified.claims)
+    execution_trace.append(f"claim_verification_removed={removed_count}")
+    execution_trace.append("claim_verification_complete")
+    return {
+        "synthesis": verified,
+        "answer": verified.answer_summary,
+        "claims": verified.claims,
         "execution_trace": execution_trace,
     }
 
@@ -385,6 +421,14 @@ def evaluate_answer(state: ResearchState) -> ResearchState:
     citation_score = 1.0 if state["sources"] else 0.0
     completeness_score = 0.7 if state["answer"] else 0.0
     groundedness_score = 1.0 if state["sources"] and "[" in state["answer"] and "]" in state["answer"] else 0.5 if state["sources"] else 0.0
+    claim_support_score = (
+        1.0
+        if state["claims"] and all(
+            claim.support_status == "supported" and claim.supporting_quotes
+            for claim in state["claims"]
+        )
+        else 0.0 if state["claims"] else 1.0 if state["answer"].startswith("Insufficient evidence") else 0.0
+    )
     evidence_sufficiency = min(len(state["sources"]) / max(state["top_k"], 1), 1.0)
 
     evaluation = [
@@ -395,8 +439,13 @@ def evaluate_answer(state: ResearchState) -> ResearchState:
         ),
         EvaluationScore(
             metric="groundedness",
-            score=groundedness_score,
-            rationale="Initial heuristic: checks whether the final answer explicitly cites collected evidence.",
+            score=max(groundedness_score, claim_support_score),
+            rationale="Checks whether the final answer is backed by collected evidence or supported claim links.",
+        ),
+        EvaluationScore(
+            metric="claim_support",
+            score=claim_support_score,
+            rationale="Checks whether every returned claim has at least one supporting source quote.",
         ),
         EvaluationScore(
             metric="answer_completeness",

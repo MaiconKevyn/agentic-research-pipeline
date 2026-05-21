@@ -222,6 +222,7 @@ code {
 }
 
 .answer-card,
+.claim-card,
 .metric-card,
 .source-card,
 .run-metadata,
@@ -275,6 +276,7 @@ code {
 
 .metric-row,
 .section-heading,
+.claim-topline,
 .source-topline {
   display: flex;
   justify-content: space-between;
@@ -302,10 +304,31 @@ code {
 }
 
 .metric-card p,
+.claim-card p,
 .source-card p,
 .empty-state p {
   margin: 0;
   color: var(--muted);
+}
+
+.claim-list {
+  display: grid;
+  gap: 14px;
+}
+
+.claim-card blockquote {
+  margin: 14px 0 0;
+  border-left: 3px solid rgba(248, 169, 59, 0.42);
+  padding-left: 12px;
+  color: var(--muted);
+}
+
+.claim-card blockquote strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--warning);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.85rem;
 }
 
 .source-list {

@@ -10,7 +10,7 @@ from typing import Any
 from backend.app.core.config import settings
 from backend.app.core.logging import get_logger
 from backend.app.db.client import get_connection
-from backend.app.schemas.research import CorpusStats, EvaluationScore, SourceItem
+from backend.app.schemas.research import AnswerClaim, CorpusStats, EvaluationScore, SourceItem
 
 
 logger = get_logger(__name__)
@@ -30,6 +30,7 @@ class ResearchRunRecord:
     selected_tools: list[str]
     model: str | None
     answer: str
+    claims: list[AnswerClaim]
     sources: list[SourceItem]
     evaluation_scores: list[EvaluationScore]
     execution_trace: list[str]
@@ -618,6 +619,47 @@ def record_research_run(record: ResearchRunRecord) -> None:
                             json.dumps(source.metadata),
                         ),
                     )
+                for claim in record.claims:
+                    for quote in claim.supporting_quotes:
+                        cursor.execute(
+                            """
+                            INSERT INTO claim_evidence_links (
+                                claim_evidence_link_id,
+                                run_id,
+                                claim_text,
+                                source_id,
+                                quote,
+                                support_label,
+                                metadata
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (claim_evidence_link_id) DO UPDATE
+                            SET
+                                claim_text = EXCLUDED.claim_text,
+                                source_id = EXCLUDED.source_id,
+                                quote = EXCLUDED.quote,
+                                support_label = EXCLUDED.support_label,
+                                metadata = EXCLUDED.metadata
+                            """,
+                            (
+                                str(uuid.uuid5(
+                                    uuid.NAMESPACE_URL,
+                                    f"{record.run_id}:{claim.claim_text}:{quote.source_id}:{quote.quote}",
+                                )),
+                                record.run_id,
+                                claim.claim_text,
+                                quote.source_id,
+                                quote.quote,
+                                claim.support_status,
+                                json.dumps(
+                                    {
+                                        "confidence": claim.confidence,
+                                        "limitations": claim.limitations,
+                                        "conflicts": claim.conflicts,
+                                    }
+                                ),
+                            ),
+                        )
     except Exception as exc:
         raise DocumentRepositoryError(f"Failed to record research run: {exc}") from exc
 

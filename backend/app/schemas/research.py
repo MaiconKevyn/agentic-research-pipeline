@@ -66,11 +66,31 @@ class EvidenceCollection(BaseModel):
     source_type_breakdown: dict[str, int] = Field(default_factory=dict)
 
 
+class ClaimEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: str
+    quote: str = Field(..., min_length=3)
+
+
+class AnswerClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    claim_text: str = Field(..., min_length=3)
+    supporting_source_ids: list[str] = Field(default_factory=list)
+    supporting_quotes: list[ClaimEvidence] = Field(default_factory=list)
+    confidence: Literal["low", "medium", "high"]
+    limitations: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    support_status: Literal["supported", "unsupported", "conflicting"] = "supported"
+
+
 class SynthesisOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    answer: str = Field(..., min_length=3)
+    answer_summary: str = Field(..., min_length=3)
+    claims: list[AnswerClaim] = Field(default_factory=list)
     confidence: Literal["low", "medium", "high"]
-    cited_source_ids: list[str]
+    limitations: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
     uncertainty_note: str | None
 
 
@@ -87,6 +107,7 @@ class ResearchResponse(BaseModel):
     corpus_stats: CorpusStats
     question: str
     answer: str
+    claims: list[AnswerClaim] = Field(default_factory=list)
     sources: list[SourceItem]
     evaluation: list[EvaluationScore]
     execution_trace: list[str]

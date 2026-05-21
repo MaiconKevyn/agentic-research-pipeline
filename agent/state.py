@@ -1,6 +1,7 @@
 from typing import TypedDict
 
 from backend.app.schemas.research import (
+    AnswerClaim,
     EvaluationScore,
     EvaluationResult,
     EvidenceCollection,
@@ -25,5 +26,6 @@ class ResearchState(TypedDict):
     selected_tools: list[str]
     sources: list[SourceItem]
     answer: str
+    claims: list[AnswerClaim]
     evaluation: list[EvaluationScore]
     execution_trace: list[str]

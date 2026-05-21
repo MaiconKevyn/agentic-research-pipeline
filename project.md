@@ -49,6 +49,7 @@ Completed:
 - PDF ingestion now uses deterministic checksum-based document identity, contextualized embedding text, parent-child chunk metadata, and per-document JSON ingestion reports.
 - hybrid retrieval added with PostgreSQL full-text search, dense + lexical Reciprocal Rank Fusion, retrieval quality grading, corrective web escalation, and weak-evidence abstention.
 - retrieval evaluation metrics now include `Recall@K`, `MRR`, and `nDCG`.
+- claim-level synthesis added with supporting source IDs, supporting quotes, verifier-based unsupported claim removal, claim evidence persistence, and UI claim-to-source display.
 
 ### Current Agent Status
 
@@ -62,14 +63,15 @@ The agent already works end to end for phase 1.
 - it rejects out-of-scope questions before calling retrieval tools;
 - it deduplicates evidence, applies global reranking, and keeps the most relevant sources;
 - it synthesizes the answer with `gpt-4o-mini` using validated structured output;
-- it returns an answer, structured sources, heuristic evaluation, and execution trace.
+- it verifies claim support before returning the answer;
+- it returns an answer, verified claims, structured sources, heuristic evaluation, and execution trace.
 
 The critical outputs in the workflow already have explicit schemas:
 
 - `QuestionClassification`
 - `ResearchPlan`
 - `EvidenceCollection`
-- `SynthesisOutput`
+- `SynthesisOutput` with claim-level evidence links
 - `EvaluationResult`
 
 ### Current Interface Status
@@ -77,7 +79,7 @@ The critical outputs in the workflow already have explicit schemas:
 - SPA built with `React + Vite + TypeScript`;
 - layout starts directly with `composer + output`, without a top status strip;
 - composer for the question and `top_k` control;
-- rich display for answer, metrics, sources, and trace;
+- rich display for answer, verified claims, metrics, sources, and trace;
 - responsive design for desktop and mobile;
 - frontend ready to talk to the local FastAPI API.
 
@@ -99,6 +101,7 @@ The critical outputs in the workflow already have explicit schemas:
 ### What the Agent Already Returns
 
 - `answer`: synthesized answer;
+- `claims`: verified claim-level answer structure with supporting source IDs and quotes;
 - `sources`: structured source list;
 - `evaluation`: initial heuristic metrics;
 - `execution_trace`: flow steps and counts.
@@ -118,6 +121,16 @@ Each internal source may currently include:
 - `retrieval_distance`;
 - `global_rerank_score`;
 - `global_rerank_rank`.
+
+Each returned claim includes:
+
+- `claim_text`;
+- `supporting_source_ids`;
+- `supporting_quotes`;
+- `confidence`;
+- `limitations`;
+- `conflicts`;
+- `support_status`.
 
 ### Current State of Structured Validation and Guardrails
 
