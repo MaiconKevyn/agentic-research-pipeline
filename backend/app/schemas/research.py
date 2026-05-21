@@ -227,6 +227,7 @@ class RunMetricsSummary(BaseModel):
     run_count: int = Field(..., ge=0)
     failure_count: int = Field(..., ge=0)
     average_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
     average_cost_estimate_usd: float | None = None
     average_scores: dict[str, float] = Field(default_factory=dict)
     runs_by_day: list[dict[str, Any]] = Field(default_factory=list)

@@ -287,7 +287,7 @@ For out-of-scope or unsafe questions, the system returns a structured refusal in
 - `POST /runs/{run_id}/feedback`: persist researcher feedback.
 - `GET /feedback/eval-cases`: convert review feedback into eval-ready cases.
 - `GET /ready`: dependency-aware readiness check.
-- `GET /ops/run-metrics`: latency, cost, failure, and quality trend dashboard data.
+- `GET /ops/run-metrics`: average and p95 latency, cost, failure, and quality trend dashboard data.
 
 ## Deployment
 The production profile runs the FastAPI backend, PostgreSQL/pgvector, and the background ingestion worker:

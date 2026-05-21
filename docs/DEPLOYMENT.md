@@ -63,7 +63,7 @@ Operators can inspect run health through:
 GET /ops/run-metrics?days=30
 ```
 
-The endpoint returns run count, failure count, average latency, average estimated cost, average evaluation scores, runs by day, and quality trend data. The React workspace displays the same summary in the Operations panel.
+The endpoint returns run count, failure count, average latency, p95 latency, average estimated cost, average evaluation scores, runs by day, and quality trend data. The React workspace displays the same summary in the Operations panel.
 
 ## Tracing
 

@@ -991,6 +991,11 @@ def get_run_metrics_summary(days: int = 30) -> RunMetricsSummary:
                         COUNT(*) AS run_count,
                         COUNT(*) FILTER (WHERE error IS NOT NULL) AS failure_count,
                         AVG(latency_ms)::FLOAT AS average_latency_ms,
+                        CAST(
+                            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms)
+                            FILTER (WHERE latency_ms IS NOT NULL)
+                            AS FLOAT
+                        ) AS p95_latency_ms,
                         AVG(cost_estimate_usd)::FLOAT AS average_cost_estimate_usd
                     FROM research_runs
                     WHERE created_at >= NOW() - (%s || ' days')::INTERVAL
@@ -1032,6 +1037,7 @@ def get_run_metrics_summary(days: int = 30) -> RunMetricsSummary:
         run_count=int(summary_row.get("run_count") or 0),
         failure_count=int(summary_row.get("failure_count") or 0),
         average_latency_ms=summary_row.get("average_latency_ms"),
+        p95_latency_ms=summary_row.get("p95_latency_ms"),
         average_cost_estimate_usd=summary_row.get("average_cost_estimate_usd"),
         average_scores=average_scores,
         runs_by_day=runs_by_day,

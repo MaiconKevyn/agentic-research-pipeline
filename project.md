@@ -97,7 +97,7 @@ The critical outputs in the workflow already have explicit schemas:
 - source viewer shows page/chunk metadata and highlights retrieved snippets or supporting quotes;
 - exports are available as Markdown, CSV, and JSON;
 - feedback controls persist useful/review signals and review feedback can be transformed into eval cases;
-- operations panel shows run count, failures, average latency, and average estimated cost;
+- operations panel shows run count, failures, average and p95 latency, and average estimated cost;
 - responsive design for desktop and mobile;
 - frontend ready to talk to the local FastAPI API.
 
@@ -130,7 +130,7 @@ The critical outputs in the workflow already have explicit schemas:
 - `/runs/{run_id}/feedback`: persisted researcher feedback;
 - `/feedback/eval-cases`: feedback converted into eval-ready cases.
 - `/ready`: dependency-aware readiness check;
-- `/ops/run-metrics`: operator metrics for latency, cost, failures, and quality trends.
+- `/ops/run-metrics`: operator metrics for average and p95 latency, cost, failures, and quality trends.
 
 Each internal source may currently include:
 

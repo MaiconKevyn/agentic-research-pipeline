@@ -60,6 +60,7 @@ def test_operations_route_returns_run_metrics() -> None:
         run_count=3,
         failure_count=1,
         average_latency_ms=125.0,
+        p95_latency_ms=240.0,
         average_cost_estimate_usd=0.002,
         average_scores={"groundedness": 0.95},
         runs_by_day=[{"date": "2026-05-21", "count": 3}],
@@ -70,4 +71,5 @@ def test_operations_route_returns_run_metrics() -> None:
 
     assert response.run_count == 3
     assert response.failure_count == 1
+    assert response.p95_latency_ms == 240.0
     assert response.average_scores["groundedness"] == 0.95

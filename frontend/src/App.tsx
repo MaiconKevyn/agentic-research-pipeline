@@ -88,6 +88,7 @@ type RunMetricsSummary = {
   run_count: number;
   failure_count: number;
   average_latency_ms: number | null;
+  p95_latency_ms: number | null;
   average_cost_estimate_usd: number | null;
   average_scores: Record<string, number>;
   runs_by_day: { date: string; count: number }[];
@@ -392,8 +393,12 @@ function App() {
                 <strong>{metrics?.failure_count ?? "n/a"}</strong>
               </div>
               <div>
-                <span>Latency</span>
+                <span>Avg latency</span>
                 <strong>{formatMs(metrics?.average_latency_ms)}</strong>
+              </div>
+              <div>
+                <span>P95 latency</span>
+                <strong>{formatMs(metrics?.p95_latency_ms)}</strong>
               </div>
               <div>
                 <span>Cost</span>
