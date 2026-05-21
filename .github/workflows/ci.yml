@@ -37,6 +37,9 @@ jobs:
       - name: Run golden evaluation harness
         run: PYTHONPATH=. python -m evaluation.run_eval --mode mock --fail-on-threshold --baseline evaluation/reports/baseline.json
 
+      - name: Run security red-team evaluation
+        run: PYTHONPATH=. python -m evaluation.run_eval --mode mock --dataset evaluation/golden/security.jsonl --output evaluation/reports/security.latest.jsonl --fail-on-threshold
+
       - name: Build frontend
         working-directory: frontend
         run: npm run build

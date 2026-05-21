@@ -4,6 +4,8 @@ import uuid
 from langgraph.graph import END, START, StateGraph
 
 from agent.nodes import (
+    assess_input_safety,
+    assess_output_safety,
     classify_question,
     collect_evidence,
     evaluate_answer,
@@ -25,19 +27,23 @@ from backend.app.services.document_repository import (
 
 def build_research_graph():
     builder = StateGraph(ResearchState)
+    builder.add_node("assess_input_safety", assess_input_safety)
     builder.add_node("classify_question", classify_question)
     builder.add_node("plan_research", plan_research)
     builder.add_node("collect_evidence", collect_evidence)
     builder.add_node("synthesize_answer", synthesize_answer)
     builder.add_node("verify_synthesis", verify_synthesis)
+    builder.add_node("assess_output_safety", assess_output_safety)
     builder.add_node("evaluate_answer", evaluate_answer)
 
-    builder.add_edge(START, "classify_question")
+    builder.add_edge(START, "assess_input_safety")
+    builder.add_edge("assess_input_safety", "classify_question")
     builder.add_edge("classify_question", "plan_research")
     builder.add_edge("plan_research", "collect_evidence")
     builder.add_edge("collect_evidence", "synthesize_answer")
     builder.add_edge("synthesize_answer", "verify_synthesis")
-    builder.add_edge("verify_synthesis", "evaluate_answer")
+    builder.add_edge("verify_synthesis", "assess_output_safety")
+    builder.add_edge("assess_output_safety", "evaluate_answer")
     builder.add_edge("evaluate_answer", END)
     return builder.compile()
 
@@ -62,6 +68,9 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
         "question": question,
         "top_k": top_k,
         "classification": None,
+        "input_safety": None,
+        "retrieved_content_safety": None,
+        "output_safety": None,
         "plan": None,
         "evidence_collection": None,
         "retrieval_quality": "weak",

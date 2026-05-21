@@ -45,7 +45,7 @@ ToolName = Literal["vector_search", "web_search", "sql_query"]
 
 class QuestionClassification(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    query_kind: Literal["research", "operational", "off_topic"] = "research"
+    query_kind: Literal["research", "operational", "off_topic", "security_blocked"] = "research"
     selected_tools: list[ToolName] = Field(default_factory=list)
     rationale: str = Field(..., min_length=3)
 
@@ -64,6 +64,23 @@ class EvidenceCollection(BaseModel):
     kept_count: int = Field(..., ge=0)
     retrieval_quality: Literal["sufficient", "partial", "weak", "irrelevant"] = "weak"
     source_type_breakdown: dict[str, int] = Field(default_factory=dict)
+
+
+class SecurityFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: str
+    severity: Literal["low", "medium", "high"]
+    message: str
+    evidence: str | None = None
+
+
+class SafetyDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    allowed: bool
+    action: Literal["allow", "block", "sanitize"]
+    findings: list[SecurityFinding] = Field(default_factory=list)
+    rationale: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ClaimEvidence(BaseModel):

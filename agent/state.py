@@ -7,6 +7,7 @@ from backend.app.schemas.research import (
     EvidenceCollection,
     QuestionClassification,
     ResearchPlan,
+    SafetyDecision,
     SourceItem,
     SynthesisOutput,
 )
@@ -18,6 +19,9 @@ class ResearchState(TypedDict):
     question: str
     top_k: int
     classification: QuestionClassification | None
+    input_safety: SafetyDecision | None
+    retrieved_content_safety: SafetyDecision | None
+    output_safety: SafetyDecision | None
     plan: ResearchPlan | None
     evidence_collection: EvidenceCollection | None
     retrieval_quality: str

@@ -22,6 +22,11 @@ class Settings:
     embedding_dimensions: int = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
     request_timeout_seconds: int = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
     default_top_k: int = int(os.getenv("DEFAULT_TOP_K", "5"))
+    max_input_chars: int = int(os.getenv("MAX_INPUT_CHARS", "4000"))
+    max_retrieved_tokens: int = int(os.getenv("MAX_RETRIEVED_TOKENS", "1800"))
+    max_web_searches_per_run: int = int(os.getenv("MAX_WEB_SEARCHES_PER_RUN", "1"))
+    max_estimated_model_cost_usd: float = float(os.getenv("MAX_ESTIMATED_MODEL_COST_USD", "0.05"))
+    rate_limit_requests_per_minute: int = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "600"))
     frontend_origins: str = os.getenv(
         "FRONTEND_ORIGINS",
         "http://127.0.0.1:5173,http://localhost:5173",

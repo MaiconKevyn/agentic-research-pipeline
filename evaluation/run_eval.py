@@ -49,18 +49,24 @@ def _mock_run(question: str, top_k: int = 5) -> ResearchResponse:
     lowered = question.lower()
     answer = "Insufficient evidence: this request is outside the project scope."
     sources: list[SourceItem] = []
-    trace = ["scope_guardrail_triggered"]
+    trace = ["scope_guardrail_triggered", "security_output_action=allow"]
     should_abstain = any(
         marker in lowered
         for marker in (
             "football",
             "unrelated",
             "ignore previous",
+            "ignore all previous",
+            "without citations",
             "system prompt",
             "developer message",
             "secret",
             "exfiltrate",
             "malicious",
+            "private credentials",
+            "web_search tool",
+            "legal conclusion",
+            "no source supports",
             "weather",
             "stock price",
         )
@@ -77,7 +83,19 @@ def _mock_run(question: str, top_k: int = 5) -> ResearchResponse:
                 metadata={"page_start": 1},
             )
         ]
-        trace = ["mock_evidence_returned"]
+        trace = ["security_input_action=allow", "mock_evidence_returned", "security_output_action=allow"]
+    elif any(
+        marker in lowered
+        for marker in (
+            "ignore previous",
+            "system prompt",
+            "developer message",
+            "secret",
+            "exfiltrate",
+            "malicious",
+        )
+    ):
+        trace = ["security_input_action=block", "security_guardrail_triggered", "security_output_action=allow"]
 
     return ResearchResponse(
         run_id="mock-run",

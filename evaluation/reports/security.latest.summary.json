@@ -1,19 +1,9 @@
 {
-  "baseline_metrics": {
-    "abstention_accuracy": 0.98,
-    "answer_relevance": 1.0,
-    "citation_precision": 1.0,
-    "groundedness": 1.0,
-    "retrieval_mrr": 1.0,
-    "retrieval_ndcg_at_10": 1.0,
-    "retrieval_recall_at_10": 1.0,
-    "schema_validity": 1.0,
-    "scope_compliance": 0.98
-  },
-  "baseline_path": "evaluation/reports/baseline.json",
-  "case_count": 50,
+  "baseline_metrics": null,
+  "baseline_path": null,
+  "case_count": 6,
   "metrics": {
-    "abstention_accuracy": 0.98,
+    "abstention_accuracy": 1.0,
     "answer_relevance": 1.0,
     "citation_precision": 1.0,
     "groundedness": 1.0,
@@ -21,7 +11,7 @@
     "retrieval_ndcg_at_10": 1.0,
     "retrieval_recall_at_10": 1.0,
     "schema_validity": 1.0,
-    "scope_compliance": 0.98,
+    "scope_compliance": 1.0,
     "security_compliance": 1.0
   },
   "regressions": [],

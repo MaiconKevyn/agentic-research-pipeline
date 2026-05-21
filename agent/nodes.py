@@ -14,6 +14,7 @@ from backend.app.schemas.research import (
 )
 from backend.app.services.llm_service import LLMServiceError, generate_research_answer
 from backend.app.services.rerank_service import RerankServiceError, rerank_sources_global
+from backend.app.services.security_guardrail import rate_limiter, security_guardrail
 from backend.app.services.synthesis_verifier import verify_synthesis_claims
 
 
@@ -92,6 +93,22 @@ OFF_TOPIC_MESSAGE = (
     "FastAPI, pgvector, and evaluation. Please ask a question within that scope."
 )
 
+SECURITY_REFUSAL_MESSAGE = (
+    "I cannot help with prompt injection, hidden prompt extraction, tool hijacking, "
+    "or sensitive data exfiltration. Please ask a project-scoped research question."
+)
+
+OUTPUT_SECURITY_REFUSAL_MESSAGE = (
+    "I cannot return this answer because the safety checks detected potential leakage "
+    "of hidden instructions or personal data."
+)
+
+
+def _finding_categories(decision) -> str:
+    if not decision or not decision.findings:
+        return "none"
+    return ",".join(finding.category for finding in decision.findings)
+
 
 def _source_type_breakdown(sources: list[SourceItem]) -> str:
     counts: dict[str, int] = {}
@@ -130,12 +147,48 @@ def _is_operational_query(question: str) -> bool:
     return has_index_hint and has_entity_hint
 
 
+def assess_input_safety(state: ResearchState) -> ResearchState:
+    rate_decision = rate_limiter.check("research-api")
+    input_decision = security_guardrail.assess_input(state["question"])
+    execution_trace = [
+        *state["execution_trace"],
+        f"rate_limit_action={rate_decision.action}",
+        f"input_estimated_tokens={input_decision.metadata.get('estimated_tokens', 0)}",
+        f"max_input_chars={input_decision.metadata.get('max_input_chars', settings.max_input_chars)}",
+        f"security_input_action={input_decision.action if rate_decision.allowed else 'block'}",
+        f"security_input_findings={_finding_categories(input_decision if input_decision.findings else rate_decision)}",
+    ]
+    if not rate_decision.allowed:
+        input_decision = rate_decision
+    return {
+        "input_safety": input_decision,
+        "execution_trace": execution_trace,
+    }
+
+
 def classify_question(state: ResearchState) -> ResearchState:
     lowered = state["question"].lower()
     execution_trace = [*state["execution_trace"], "classified_question"]
     selected_tools = ["vector_search"]
     query_kind = "research"
     rationale = "General research question; use hybrid internal retrieval first and escalate only when evidence is weak."
+    input_safety = state.get("input_safety")
+
+    if input_safety and not input_safety.allowed:
+        classification = QuestionClassification(
+            query_kind="security_blocked",
+            selected_tools=[],
+            rationale=input_safety.rationale,
+        )
+        execution_trace.append("tool_policy_allowed=none")
+        execution_trace.append("selected_tools=")
+        execution_trace.append(f"classification_query_kind={classification.query_kind}")
+        execution_trace.append("security_guardrail_triggered")
+        return {
+            "classification": classification,
+            "selected_tools": [],
+            "execution_trace": execution_trace,
+        }
 
     if not _is_in_project_scope(lowered):
         query_kind = "off_topic"
@@ -153,6 +206,9 @@ def classify_question(state: ResearchState) -> ResearchState:
         query_kind=query_kind,
         selected_tools=selected_tools,
         rationale=rationale,
+    )
+    execution_trace.append(
+        f"tool_policy_allowed={','.join(classification.selected_tools) if classification.selected_tools else 'none'}"
     )
     execution_trace.append(f"selected_tools={','.join(classification.selected_tools)}")
     execution_trace.append(f"classification_query_kind={classification.query_kind}")
@@ -181,6 +237,12 @@ def plan_research(state: ResearchState) -> ResearchState:
             classification.rationale,
             "Do not call retrieval tools. Return the scope guardrail response.",
         ]
+    elif classification.query_kind == "security_blocked":
+        objective = f"Reject unsafe request: {state['question']}"
+        execution_notes = [
+            classification.rationale,
+            "Do not call retrieval or synthesis tools. Return the security guardrail response.",
+        ]
     plan = ResearchPlan(
         objective=objective,
         selected_tools=classification.selected_tools,
@@ -202,7 +264,7 @@ def collect_evidence(state: ResearchState) -> ResearchState:
     execution_trace = [*state["execution_trace"], "collecting_evidence"]
     classification = state["classification"]
 
-    if classification and classification.query_kind == "off_topic":
+    if classification and classification.query_kind in {"off_topic", "security_blocked"}:
         execution_trace.append("scope_guardrail_skipped_evidence_collection")
         return {
             "evidence_collection": EvidenceCollection(
@@ -232,14 +294,19 @@ def collect_evidence(state: ResearchState) -> ResearchState:
         classification is not None
         and classification.query_kind == "research"
         and initial_quality in {"partial", "weak"}
+        and settings.max_web_searches_per_run > 0
     )
+    web_searches_used = 0
     if should_escalate_web:
         execution_trace.append("corrective_web_search_triggered")
         web_results = search_web(state["question"], state["top_k"])
+        web_searches_used = 1
         execution_trace.append(f"web_search_results={len(web_results)}")
         collected.extend(web_results)
     else:
         execution_trace.append("corrective_web_search_skipped")
+    execution_trace.append(f"web_searches_used={web_searches_used}")
+    execution_trace.append(f"max_web_searches={settings.max_web_searches_per_run}")
 
     if "sql_query" in state["selected_tools"]:
         sql_results = query_structured_data(state["question"])
@@ -263,6 +330,12 @@ def collect_evidence(state: ResearchState) -> ResearchState:
         execution_trace.append(f"global_rerank_error={exc}")
 
     kept_sources = reranked_sources[: state["top_k"]]
+    kept_sources, content_safety = security_guardrail.assess_retrieved_content(kept_sources)
+    kept_sources, token_decision = security_guardrail.apply_retrieved_token_limit(kept_sources)
+    execution_trace.append(f"security_retrieved_content_action={content_safety.action}")
+    execution_trace.append(f"security_retrieved_content_findings={_finding_categories(content_safety)}")
+    execution_trace.append("retrieved_token_limit_applied")
+    execution_trace.append(f"max_retrieved_tokens={token_decision.metadata.get('max_retrieved_tokens')}")
     retrieval_quality = _grade_retrieval_quality(
         sources=kept_sources,
         top_k=state["top_k"],
@@ -285,6 +358,7 @@ def collect_evidence(state: ResearchState) -> ResearchState:
         "evidence_collection": evidence_collection,
         "retrieval_quality": retrieval_quality,
         "sources": kept_sources,
+        "retrieved_content_safety": content_safety,
         "execution_trace": execution_trace,
     }
 
@@ -292,6 +366,24 @@ def collect_evidence(state: ResearchState) -> ResearchState:
 def synthesize_answer(state: ResearchState) -> ResearchState:
     execution_trace = [*state["execution_trace"], "synthesizing_answer"]
     classification = state["classification"]
+
+    if classification and classification.query_kind == "security_blocked":
+        execution_trace.append("security_guardrail_response")
+        synthesis = SynthesisOutput(
+            answer_summary=SECURITY_REFUSAL_MESSAGE,
+            confidence="high",
+            claims=[],
+            limitations=["Unsafe input was blocked before tool execution."],
+            conflicts=[],
+            follow_up_questions=[],
+            uncertainty_note="Request was rejected by the input safety policy.",
+        )
+        return {
+            "synthesis": synthesis,
+            "answer": synthesis.answer_summary,
+            "claims": [],
+            "execution_trace": execution_trace,
+        }
 
     if classification and classification.query_kind == "off_topic":
         execution_trace.append("scope_guardrail_response")
@@ -338,6 +430,31 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
             "answer": (
                 "Insufficient evidence: no usable sources were collected for grounded synthesis."
             ),
+            "claims": [],
+            "execution_trace": execution_trace,
+        }
+
+    budget_decision = security_guardrail.assess_model_budget(
+        question=state["question"],
+        sources=state["sources"],
+    )
+    execution_trace.append(f"model_budget_action={budget_decision.action}")
+    execution_trace.append(f"estimated_model_cost_usd={budget_decision.metadata.get('estimated_model_cost_usd')}")
+    if not budget_decision.allowed:
+        execution_trace.append("model_budget_abstention")
+        answer = "Insufficient evidence: model budget limits prevented safe grounded synthesis."
+        synthesis = SynthesisOutput(
+            answer_summary=answer,
+            confidence="low",
+            claims=[],
+            limitations=["Model budget policy blocked synthesis for this run."],
+            conflicts=[],
+            follow_up_questions=[],
+            uncertainty_note="Synthesis skipped because resource limits were exceeded.",
+        )
+        return {
+            "synthesis": synthesis,
+            "answer": answer,
             "claims": [],
             "execution_trace": execution_trace,
         }
@@ -394,8 +511,64 @@ def verify_synthesis(state: ResearchState) -> ResearchState:
     }
 
 
+def assess_output_safety(state: ResearchState) -> ResearchState:
+    execution_trace = [*state["execution_trace"], "checking_output_safety"]
+    classification = state["classification"]
+    if classification and classification.query_kind in {"security_blocked", "off_topic"}:
+        execution_trace.append("security_output_action=allow")
+        execution_trace.append("security_output_findings=none")
+        return {
+            "execution_trace": execution_trace,
+        }
+    decision = security_guardrail.assess_output(state["answer"])
+    execution_trace.append(f"security_output_action={decision.action}")
+    execution_trace.append(f"security_output_findings={_finding_categories(decision)}")
+    if not decision.allowed:
+        synthesis = SynthesisOutput(
+            answer_summary=OUTPUT_SECURITY_REFUSAL_MESSAGE,
+            confidence="high",
+            claims=[],
+            limitations=["Output safety policy blocked the generated answer."],
+            conflicts=[],
+            follow_up_questions=[],
+            uncertainty_note="Potential leakage was detected after synthesis.",
+        )
+        return {
+            "output_safety": decision,
+            "synthesis": synthesis,
+            "answer": synthesis.answer_summary,
+            "claims": [],
+            "execution_trace": execution_trace,
+        }
+    return {
+        "output_safety": decision,
+        "execution_trace": execution_trace,
+    }
+
+
 def evaluate_answer(state: ResearchState) -> ResearchState:
     classification = state["classification"]
+    if classification and classification.query_kind == "security_blocked":
+        evaluation_result = EvaluationResult(
+            scores=[
+                EvaluationScore(
+                    metric="security_compliance",
+                    score=1.0,
+                    rationale="The assistant blocked unsafe input before calling tools or the language model.",
+                ),
+                EvaluationScore(
+                    metric="schema_validity",
+                    score=1.0,
+                    rationale="The refusal still follows the structured API schema.",
+                ),
+            ],
+            summary="Unsafe request correctly rejected by the security guardrail.",
+        )
+        return {
+            "evaluation_result": evaluation_result,
+            "evaluation": evaluation_result.scores,
+            "execution_trace": [*state["execution_trace"], "evaluating_answer"],
+        }
     if classification and classification.query_kind == "off_topic":
         evaluation_result = EvaluationResult(
             scores=[

@@ -118,7 +118,7 @@ agentic-research-pipeline/
 │   │   ├── core/                      # Config and logging
 │   │   ├── db/                        # DB connection helpers
 │   │   ├── schemas/                   # Pydantic schemas
-│   │   └── services/                  # LLM, embeddings, reranking, ingestion, repository
+│   │   └── services/                  # LLM, embeddings, reranking, ingestion, security, repository
 │   └── sql/
 │       └── init_pgvector.sql          # pgvector schema bootstrap
 ├── data/
@@ -139,7 +139,7 @@ agentic-research-pipeline/
 │   ├── bootstrap_db.sh                # Starts PostgreSQL and seeds initial data
 │   ├── ingest_raw_pdfs.py             # Ingests PDFs from data/raw
 │   └── seed_documents.py              # Seeds the initial JSON corpus
-├── tests/                             # Health, research, rerank, LLM, and ingestion tests
+├── tests/                             # Health, research, security, eval, rerank, LLM, and ingestion tests
 ├── docker-compose.yml                 # Local PostgreSQL + pgvector service
 ├── project.md                         # Project scope and implementation status
 ├── requirements.txt                   # Backend dependencies
@@ -274,7 +274,7 @@ Each response includes:
 - **`evaluation`**: heuristic metrics for the answer
 - **`execution_trace`**: step-by-step trace of the agent workflow
 
-For out-of-scope questions, the system returns a structured refusal instead of retrieving unrelated web results.
+For out-of-scope or unsafe questions, the system returns a structured refusal instead of retrieving unrelated web results or following prompt-injection instructions. Trace entries include safety decisions such as input blocking, retrieved-content sanitization, output checks, token limits, and model budget checks.
 
 ## Data Ingestion
 The ingestion pipeline performs the following steps:

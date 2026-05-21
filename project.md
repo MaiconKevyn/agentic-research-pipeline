@@ -51,6 +51,8 @@ Completed:
 - retrieval evaluation metrics now include `Recall@K`, `MRR`, and `nDCG`.
 - claim-level synthesis added with supporting source IDs, supporting quotes, verifier-based unsupported claim removal, claim evidence persistence, and UI claim-to-source display.
 - evaluation harness now has a 50-case default golden set, adversarial and insufficient-evidence coverage, summary scorecards, CI threshold gates, and historical baseline comparison.
+- security guardrails now classify direct prompt injection, tool hijacking, data exfiltration, system prompt extraction, malicious retrieved content, output leakage, rate limits, and token/cost budgets.
+- red-team security eval cases and a `security_compliance` gate now run in CI.
 
 ### Current Agent Status
 
@@ -62,14 +64,19 @@ The agent already works end to end for phase 1.
 - it queries hybrid internal search, corrective `web_search`, and `sql_query` when applicable;
 - it grades retrieval quality before synthesis and abstains when support stays weak;
 - it rejects out-of-scope questions before calling retrieval tools;
+- it blocks prompt injection, hidden prompt extraction, and exfiltration attempts before calling tools;
+- it sanitizes retrieved content that tries to override system, tool, or citation policy;
+- it applies rate, input length, retrieved token, and estimated model-cost limits with trace entries;
 - it deduplicates evidence, applies global reranking, and keeps the most relevant sources;
 - it synthesizes the answer with `gpt-4o-mini` using validated structured output;
 - it verifies claim support before returning the answer;
+- it checks final output for system prompt and PII leakage before returning the answer;
 - it returns an answer, verified claims, structured sources, heuristic evaluation, and execution trace.
 
 The critical outputs in the workflow already have explicit schemas:
 
 - `QuestionClassification`
+- `SafetyDecision`
 - `ResearchPlan`
 - `EvidenceCollection`
 - `SynthesisOutput` with claim-level evidence links
@@ -122,6 +129,8 @@ Each internal source may currently include:
 - `retrieval_distance`;
 - `global_rerank_score`;
 - `global_rerank_rank`.
+- `security_filtered`;
+- `security_findings`.
 
 Each returned claim includes:
 
@@ -141,6 +150,10 @@ Each returned claim includes:
 - structured output for the final LLM synthesis;
 - validation of `cited_source_ids` against the actually available sources;
 - scope rejection for questions unrelated to the project or its indexed domain;
+- direct prompt injection, tool abuse, data exfiltration, and system prompt extraction rejection;
+- malicious retrieved-content detection and sanitization before synthesis;
+- output safety checks for hidden prompt, secret, and PII leakage;
+- resource controls for input length, request rate, retrieved tokens, web searches, and estimated model cost;
 - explicit fallback when the model or a tool fails.
 
 ### Validation Already Performed
@@ -152,12 +165,13 @@ Each returned claim includes:
 - reingestion of the real corpus;
 - manual validation of vector retrieval and the `/research` pipeline against the real internal corpus;
 - manual validation of global reranking between internal and web sources.
+- automated security guardrail tests for direct injection, malicious retrieved text, output leakage, rate limits, and red-team eval scoring.
 
 Pending in phase 1:
 
-- strengthen evaluation and pipeline tests;
 - improve per-step observability;
-- refine reranking and hybrid retrieval between the internal corpus and web sources;
+- add researcher workspace UX for source inspection, run history, exports, and feedback;
+- add deployment and operations features such as auth, background workers, readiness, OpenTelemetry, and run metrics;
 - decide whether the next iteration should prioritize richer reranking, better evaluation, or conversation memory.
 
 ## What This Project Should Train
