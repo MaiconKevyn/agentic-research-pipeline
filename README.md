@@ -118,7 +118,7 @@ agentic-research-pipeline/
 │   │   ├── core/                      # Config and logging
 │   │   ├── db/                        # DB connection helpers
 │   │   ├── schemas/                   # Pydantic schemas
-│   │   └── services/                  # LLM, embeddings, reranking, ingestion, security, repository
+│   │   └── services/                  # LLM, embeddings, reranking, ingestion, security, exports, repository
 │   └── sql/
 │       └── init_pgvector.sql          # pgvector schema bootstrap
 ├── data/
@@ -259,7 +259,8 @@ curl -X POST http://127.0.0.1:8000/research \
   -H "Content-Type: application/json" \
   -d '{
     "question": "What are the main challenges of RAG according to the internal corpus?",
-    "top_k": 4
+    "top_k": 4,
+    "answer_mode": "detailed"
   }'
 ```
 
@@ -275,6 +276,14 @@ Each response includes:
 - **`execution_trace`**: step-by-step trace of the agent workflow
 
 For out-of-scope or unsafe questions, the system returns a structured refusal instead of retrieving unrelated web results or following prompt-injection instructions. Trace entries include safety decisions such as input blocking, retrieved-content sanitization, output checks, token limits, and model budget checks.
+
+### Researcher Workspace API
+- `GET /runs`: list persisted research runs for history.
+- `GET /runs/{run_id}`: reopen a reproducible run with its replay request.
+- `GET /runs/{run_id}/sources/{source_id}`: inspect source text with page/chunk metadata and highlights.
+- `GET /runs/{run_id}/export?format=markdown|csv|json`: export a run.
+- `POST /runs/{run_id}/feedback`: persist researcher feedback.
+- `GET /feedback/eval-cases`: convert review feedback into eval-ready cases.
 
 ## Data Ingestion
 The ingestion pipeline performs the following steps:

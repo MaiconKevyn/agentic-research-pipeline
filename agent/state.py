@@ -18,6 +18,7 @@ class ResearchState(TypedDict):
     corpus_version_id: str
     question: str
     top_k: int
+    answer_mode: str
     classification: QuestionClassification | None
     input_safety: SafetyDecision | None
     retrieved_content_safety: SafetyDecision | None

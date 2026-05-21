@@ -71,12 +71,13 @@ def test_research_route_returns_structured_response() -> None:
                 follow_up_questions=[],
                 uncertainty_note=None,
             ),
-        ),
+        ) as mocked_generate_answer,
     ):
         response = research(
             ResearchRequest(
                 question="What are the main points of the project?",
                 top_k=3,
+                answer_mode="concise",
             )
         )
 
@@ -92,6 +93,7 @@ def test_research_route_returns_structured_response() -> None:
     assert response.sources[0].source_type == "web"
     assert response.evaluation
     assert "classified_question" in response.execution_trace
+    assert "answer_mode=concise" in response.execution_trace
     assert "hybrid_search_results=1" in response.execution_trace
     assert "web_search_results=1" in response.execution_trace
     assert "web_searches_used=1" in response.execution_trace
@@ -99,6 +101,8 @@ def test_research_route_returns_structured_response() -> None:
     assert "global_rerank_applied" in response.execution_trace
     assert "synthesis_confidence=high" in response.execution_trace
     assert "llm_synthesis_success" in response.execution_trace
+    _, kwargs = mocked_generate_answer.call_args
+    assert kwargs["answer_mode"] == "concise"
 
 
 def test_research_route_rejects_out_of_scope_questions_without_calling_tools() -> None:

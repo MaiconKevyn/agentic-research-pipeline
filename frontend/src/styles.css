@@ -165,6 +165,10 @@ code {
 
 .submit-button,
 .prompt-chip,
+.history-item,
+.mode-button,
+.feedback-controls button,
+.action-row a,
 .source-card a {
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
@@ -182,7 +186,11 @@ code {
 
 .submit-button:hover:not(:disabled),
 .prompt-chip:hover,
-.source-card a:hover {
+.source-card a:hover,
+.history-item:hover,
+.mode-button:hover,
+.feedback-controls button:hover,
+.action-row a:hover {
   transform: translateY(-1px);
 }
 
@@ -207,6 +215,70 @@ code {
   cursor: pointer;
 }
 
+.mode-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mode-button,
+.feedback-controls button,
+.action-row a,
+.history-item {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(7, 15, 19, 0.58);
+  color: var(--text);
+}
+
+.mode-button {
+  min-height: 44px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.mode-button.active {
+  background: rgba(248, 169, 59, 0.18);
+  border-color: rgba(248, 169, 59, 0.34);
+  color: var(--warning);
+}
+
+.history-section {
+  margin-top: 24px;
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.history-item {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  border-radius: 14px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.history-item strong,
+.history-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item strong {
+  font-size: 0.9rem;
+}
+
+.history-item span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .error-banner {
   margin: 18px 0 0;
   padding: 12px 14px;
@@ -225,13 +297,36 @@ code {
 .claim-card,
 .metric-card,
 .source-card,
+.source-detail,
 .run-metadata,
+.evidence-section,
+.source-viewer,
 .trace-section,
 .empty-state {
   background: rgba(8, 17, 21, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 22px;
   padding: 20px;
+}
+
+.action-row,
+.feedback-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.action-row a,
+.feedback-controls button {
+  min-height: 36px;
+  border-radius: 10px;
+  padding: 8px 11px;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .run-metadata {
@@ -266,6 +361,12 @@ code {
   color: var(--text);
   white-space: pre-wrap;
   font-size: 1.02rem;
+}
+
+.feedback-status {
+  margin: 12px 0 0;
+  color: var(--success);
+  font-size: 0.9rem;
 }
 
 .metrics-grid {
@@ -336,9 +437,74 @@ code {
   gap: 14px;
 }
 
+.evidence-table-wrap {
+  overflow-x: auto;
+}
+
+.evidence-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+  color: var(--text);
+}
+
+.evidence-table th,
+.evidence-table td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.evidence-table th {
+  color: var(--warning);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.evidence-table tbody tr {
+  cursor: pointer;
+}
+
+.evidence-table tbody tr:hover {
+  background: rgba(248, 169, 59, 0.08);
+}
+
+.evidence-table td:first-child {
+  min-width: 180px;
+  font-weight: 700;
+}
+
+.evidence-table td:last-child {
+  color: var(--muted);
+  min-width: 280px;
+}
+
 .source-card h3 {
   margin: 10px 0;
   font-size: 1.08rem;
+}
+
+.source-detail h3 {
+  margin: 12px 0;
+}
+
+.source-text {
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(3, 8, 11, 0.48);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.source-text mark {
+  padding: 1px 3px;
+  border-radius: 4px;
+  background: rgba(247, 215, 114, 0.28);
+  color: var(--text);
 }
 
 .source-type,
@@ -392,6 +558,10 @@ code {
   min-height: 340px;
 }
 
+.compact-empty {
+  min-height: 140px;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -405,6 +575,7 @@ code {
 
 @media (max-width: 1080px) {
   .workspace,
+  .mode-control,
   .metrics-grid,
   .run-metadata {
     grid-template-columns: 1fr;

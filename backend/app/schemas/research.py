@@ -7,12 +7,21 @@ from backend.app.core.config import settings
 
 class ResearchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    question: str = Field(..., min_length=3, description="Research question from the user.")
+    question: str = Field(
+        ...,
+        min_length=3,
+        max_length=settings.max_input_chars,
+        description="Research question from the user.",
+    )
     top_k: int = Field(
         default=settings.default_top_k,
         ge=1,
         le=10,
         description="Maximum evidence items to keep.",
+    )
+    answer_mode: Literal["concise", "detailed", "evidence_table"] = Field(
+        default="detailed",
+        description="Preferred answer shape for the research run.",
     )
 
 
@@ -128,3 +137,78 @@ class ResearchResponse(BaseModel):
     sources: list[SourceItem]
     evaluation: list[EvaluationScore]
     execution_trace: list[str]
+
+
+class FeedbackItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feedback_id: str
+    run_id: str
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    corrected_answer: str | None = None
+    add_to_eval: bool = False
+    created_at: str
+
+
+class FeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rating: Literal["up", "down"]
+    comment: str | None = Field(default=None, max_length=2000)
+    corrected_answer: str | None = Field(default=None, max_length=8000)
+    add_to_eval: bool = False
+
+
+class FeedbackResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feedback_id: str
+    status: Literal["recorded"] = "recorded"
+
+
+class FeedbackEvalCase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    question: str
+    expected_answer_type: Literal["factual", "comparison", "operational", "insufficient_evidence"] = "factual"
+    required_sources: list[str] = Field(default_factory=list)
+    expected_facts: list[str] = Field(default_factory=list)
+    forbidden_claims: list[str] = Field(default_factory=list)
+    answer_rubric: str
+    difficulty: str = "feedback"
+    query_category: str = "feedback"
+    top_k: int = Field(default=5, ge=1, le=10)
+
+
+class RunSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run_id: str
+    question: str
+    answer_preview: str
+    answer_mode: Literal["concise", "detailed", "evidence_table"] = "detailed"
+    source_count: int = Field(..., ge=0)
+    created_at: str
+    latency_ms: int | None = None
+
+
+class WorkspaceRun(ResearchResponse):
+    answer_mode: Literal["concise", "detailed", "evidence_table"] = "detailed"
+    created_at: str
+    latency_ms: int | None = None
+    feedback: list[FeedbackItem] = Field(default_factory=list)
+    replay_request: ResearchRequest
+
+
+class RunSourceDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run_id: str
+    source_id: str
+    title: str
+    source_type: str
+    snippet: str
+    text: str
+    source_document_id: str | None = None
+    chunk_id: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    section_title: str | None = None
+    highlights: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

@@ -10,7 +10,20 @@ from typing import Any
 from backend.app.core.config import settings
 from backend.app.core.logging import get_logger
 from backend.app.db.client import get_connection
-from backend.app.schemas.research import AnswerClaim, CorpusStats, EvaluationScore, SourceItem
+from backend.app.schemas.research import (
+    AnswerClaim,
+    ClaimEvidence,
+    CorpusStats,
+    EvaluationScore,
+    FeedbackEvalCase,
+    FeedbackItem,
+    FeedbackRequest,
+    ResearchRequest,
+    RunSourceDetail,
+    RunSummary,
+    SourceItem,
+    WorkspaceRun,
+)
 
 
 logger = get_logger(__name__)
@@ -26,6 +39,7 @@ class ResearchRunRecord:
     run_id: str
     corpus_version_id: str
     question: str
+    answer_mode: str
     classification: str | None
     selected_tools: list[str]
     model: str | None
@@ -71,9 +85,32 @@ def ensure_schema() -> None:
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(sql)
+                _ensure_workspace_schema(cursor)
                 _backfill_normalized_schema(cursor)
     except Exception as exc:
         raise DocumentRepositoryError(f"Failed to ensure pgvector schema: {exc}") from exc
+
+
+def _ensure_workspace_schema(cursor: Any) -> None:
+    cursor.execute(
+        """
+        ALTER TABLE research_runs
+        ADD COLUMN IF NOT EXISTS answer_mode TEXT NOT NULL DEFAULT 'detailed'
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_feedback (
+            feedback_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES research_runs(run_id) ON DELETE CASCADE,
+            rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+            comment TEXT NULL,
+            corrected_answer TEXT NULL,
+            add_to_eval BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
 
 
 def _backfill_normalized_schema(cursor: Any) -> None:
@@ -545,6 +582,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                         classification,
                         selected_tools,
                         model,
+                        answer_mode,
                         answer,
                         evaluation_scores,
                         execution_trace,
@@ -552,7 +590,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                         cost_estimate_usd,
                         error
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (run_id) DO UPDATE
                     SET
                         corpus_version_id = EXCLUDED.corpus_version_id,
@@ -560,6 +598,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                         classification = EXCLUDED.classification,
                         selected_tools = EXCLUDED.selected_tools,
                         model = EXCLUDED.model,
+                        answer_mode = EXCLUDED.answer_mode,
                         answer = EXCLUDED.answer,
                         evaluation_scores = EXCLUDED.evaluation_scores,
                         execution_trace = EXCLUDED.execution_trace,
@@ -574,6 +613,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                         record.classification,
                         record.selected_tools,
                         record.model,
+                        record.answer_mode,
                         record.answer,
                         json.dumps([score.model_dump() for score in record.evaluation_scores]),
                         json.dumps(record.execution_trace),
@@ -583,6 +623,9 @@ def record_research_run(record: ResearchRunRecord) -> None:
                     ),
                 )
                 for source in record.sources:
+                    source_metadata = dict(source.metadata)
+                    if source.url:
+                        source_metadata["url"] = source.url
                     cursor.execute(
                         """
                         INSERT INTO run_sources (
@@ -616,7 +659,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                             source.title,
                             source.snippet,
                             source.metadata.get("global_rerank_score"),
-                            json.dumps(source.metadata),
+                            json.dumps(source_metadata),
                         ),
                     )
                 for claim in record.claims:
@@ -662,6 +705,387 @@ def record_research_run(record: ResearchRunRecord) -> None:
                         )
     except Exception as exc:
         raise DocumentRepositoryError(f"Failed to record research run: {exc}") from exc
+
+
+def list_research_runs(limit: int = 20) -> list[RunSummary]:
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        r.run_id,
+                        r.question,
+                        LEFT(r.answer, 220) AS answer_preview,
+                        r.answer_mode,
+                        r.created_at,
+                        r.latency_ms,
+                        COUNT(s.source_id) AS source_count
+                    FROM research_runs r
+                    LEFT JOIN run_sources s ON s.run_id = r.run_id
+                    GROUP BY r.run_id
+                    ORDER BY r.created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cursor.fetchall()
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to list research runs: {exc}") from exc
+
+    return [
+        RunSummary(
+            run_id=row["run_id"],
+            question=row["question"],
+            answer_preview=row["answer_preview"] or "",
+            answer_mode=row.get("answer_mode") or "detailed",
+            source_count=int(row.get("source_count") or 0),
+            created_at=_isoformat(row.get("created_at")),
+            latency_ms=row.get("latency_ms"),
+        )
+        for row in rows
+    ]
+
+
+def get_research_run(run_id: str) -> WorkspaceRun | None:
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        r.run_id,
+                        r.corpus_version_id,
+                        r.question,
+                        r.answer,
+                        r.answer_mode,
+                        r.evaluation_scores,
+                        r.execution_trace,
+                        r.created_at,
+                        r.latency_ms,
+                        c.source_document_count,
+                        c.chunk_count
+                    FROM research_runs r
+                    LEFT JOIN corpus_versions c ON c.corpus_version_id = r.corpus_version_id
+                    WHERE r.run_id = %s
+                    """,
+                    (run_id,),
+                )
+                run_row = cursor.fetchone()
+                if not run_row:
+                    return None
+                sources = _fetch_run_sources(cursor, run_id)
+                claims = _fetch_run_claims(cursor, run_id)
+                feedback = _fetch_run_feedback(cursor, run_id)
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to get research run: {exc}") from exc
+
+    answer_mode = run_row.get("answer_mode") or "detailed"
+    return WorkspaceRun(
+        run_id=run_row["run_id"],
+        corpus_version_id=run_row["corpus_version_id"],
+        corpus_stats=CorpusStats(
+            source_document_count=int(run_row.get("source_document_count") or 0),
+            chunk_count=int(run_row.get("chunk_count") or 0),
+            corpus_version_id=run_row["corpus_version_id"],
+        ),
+        question=run_row["question"],
+        answer=run_row["answer"],
+        answer_mode=answer_mode,
+        claims=claims,
+        sources=sources,
+        evaluation=_parse_evaluation_scores(run_row.get("evaluation_scores")),
+        execution_trace=list(run_row.get("execution_trace") or []),
+        created_at=_isoformat(run_row.get("created_at")),
+        latency_ms=run_row.get("latency_ms"),
+        feedback=feedback,
+        replay_request=ResearchRequest(
+            question=run_row["question"],
+            top_k=max(len(sources), 1),
+            answer_mode=answer_mode,
+        ),
+    )
+
+
+def get_research_run_source(run_id: str, source_id: str) -> RunSourceDetail | None:
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        s.run_id,
+                        s.source_id,
+                        s.title,
+                        s.source_type,
+                        s.snippet,
+                        s.source_document_id,
+                        s.chunk_id,
+                        s.metadata,
+                        c.raw_text,
+                        c.page_start,
+                        c.page_end,
+                        c.section_title,
+                        p.extracted_text
+                    FROM run_sources s
+                    LEFT JOIN document_chunks c ON c.chunk_id = s.chunk_id
+                    LEFT JOIN document_pages p
+                        ON p.source_document_id = c.source_document_id
+                        AND p.page_number = c.page_start
+                    WHERE s.run_id = %s AND s.source_id = %s
+                    """,
+                    (run_id, source_id),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return None
+                cursor.execute(
+                    """
+                    SELECT quote
+                    FROM claim_evidence_links
+                    WHERE run_id = %s AND source_id = %s
+                    ORDER BY created_at, quote
+                    """,
+                    (run_id, source_id),
+                )
+                quote_rows = cursor.fetchall()
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to get run source: {exc}") from exc
+
+    metadata = dict(row.get("metadata") or {})
+    text = row.get("raw_text") or row.get("extracted_text") or row.get("snippet") or ""
+    highlights = _deduplicate_strings(
+        [row.get("snippet") or ""]
+        + [quote_row.get("quote") or "" for quote_row in quote_rows]
+    )
+    return RunSourceDetail(
+        run_id=row["run_id"],
+        source_id=row["source_id"],
+        title=row["title"],
+        source_type=row["source_type"],
+        snippet=row.get("snippet") or "",
+        text=text,
+        source_document_id=row.get("source_document_id") or metadata.get("source_document_id"),
+        chunk_id=row.get("chunk_id") or metadata.get("chunk_id"),
+        page_start=row.get("page_start") or metadata.get("page_start"),
+        page_end=row.get("page_end") or metadata.get("page_end"),
+        section_title=row.get("section_title") or metadata.get("section_title"),
+        highlights=highlights,
+        metadata=metadata,
+    )
+
+
+def record_run_feedback(run_id: str, feedback: FeedbackRequest) -> str:
+    feedback_id = str(uuid.uuid4())
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO run_feedback (
+                        feedback_id,
+                        run_id,
+                        rating,
+                        comment,
+                        corrected_answer,
+                        add_to_eval
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        feedback_id,
+                        run_id,
+                        feedback.rating,
+                        feedback.comment,
+                        feedback.corrected_answer,
+                        feedback.add_to_eval,
+                    ),
+                )
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to record run feedback: {exc}") from exc
+    return feedback_id
+
+
+def list_feedback_as_eval_cases(limit: int = 100) -> list[FeedbackEvalCase]:
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        f.feedback_id,
+                        f.corrected_answer,
+                        f.comment,
+                        r.question,
+                        COUNT(s.source_id) AS source_count,
+                        ARRAY_REMOVE(ARRAY_AGG(s.source_id ORDER BY s.source_id), NULL) AS source_ids
+                    FROM run_feedback f
+                    JOIN research_runs r ON r.run_id = f.run_id
+                    LEFT JOIN run_sources s ON s.run_id = r.run_id
+                    WHERE f.add_to_eval = TRUE
+                    GROUP BY f.feedback_id, r.question
+                    ORDER BY f.created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = cursor.fetchall()
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to list feedback eval cases: {exc}") from exc
+
+    cases: list[FeedbackEvalCase] = []
+    for row in rows:
+        corrected_answer = row.get("corrected_answer") or ""
+        expected_facts = _extract_expected_facts(corrected_answer)
+        cases.append(
+            FeedbackEvalCase(
+                id=row["feedback_id"],
+                question=row["question"],
+                expected_answer_type="factual" if int(row.get("source_count") or 0) else "insufficient_evidence",
+                required_sources=list(row.get("source_ids") or []),
+                expected_facts=expected_facts,
+                forbidden_claims=[],
+                answer_rubric=row.get("comment") or "Use corrected researcher feedback.",
+                difficulty="feedback",
+                query_category="feedback",
+                top_k=max(min(int(row.get("source_count") or 5), 10), 1),
+            )
+        )
+    return cases
+
+
+def _fetch_run_sources(cursor: Any, run_id: str) -> list[SourceItem]:
+    cursor.execute(
+        """
+        SELECT source_id, title, source_type, snippet, metadata
+        FROM run_sources
+        WHERE run_id = %s
+        ORDER BY score DESC NULLS LAST, created_at, source_id
+        """,
+        (run_id,),
+    )
+    return [
+        SourceItem(
+            source_id=row["source_id"],
+            title=row["title"],
+            snippet=row["snippet"],
+            source_type=row["source_type"],
+            url=(row.get("metadata") or {}).get("url"),
+            metadata=dict(row.get("metadata") or {}),
+        )
+        for row in cursor.fetchall()
+    ]
+
+
+def _fetch_run_claims(cursor: Any, run_id: str) -> list[AnswerClaim]:
+    cursor.execute(
+        """
+        SELECT claim_text, source_id, quote, support_label, metadata
+        FROM claim_evidence_links
+        WHERE run_id = %s
+        ORDER BY created_at, claim_text, source_id
+        """,
+        (run_id,),
+    )
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in cursor.fetchall():
+        claim = grouped.setdefault(
+            row["claim_text"],
+            {
+                "supporting_source_ids": [],
+                "supporting_quotes": [],
+                "metadata": dict(row.get("metadata") or {}),
+                "support_status": _normalize_support_status(row.get("support_label")),
+            },
+        )
+        if row["source_id"] not in claim["supporting_source_ids"]:
+            claim["supporting_source_ids"].append(row["source_id"])
+        claim["supporting_quotes"].append(
+            ClaimEvidence(source_id=row["source_id"], quote=row["quote"])
+        )
+
+    claims: list[AnswerClaim] = []
+    for claim_text, payload in grouped.items():
+        metadata = payload["metadata"]
+        claims.append(
+            AnswerClaim(
+                claim_text=claim_text,
+                supporting_source_ids=payload["supporting_source_ids"],
+                supporting_quotes=payload["supporting_quotes"],
+                confidence=metadata.get("confidence", "medium"),
+                limitations=metadata.get("limitations", []),
+                conflicts=metadata.get("conflicts", []),
+                support_status=payload["support_status"],
+            )
+        )
+    return claims
+
+
+def _fetch_run_feedback(cursor: Any, run_id: str) -> list[FeedbackItem]:
+    cursor.execute(
+        """
+        SELECT feedback_id, run_id, rating, comment, corrected_answer, add_to_eval, created_at
+        FROM run_feedback
+        WHERE run_id = %s
+        ORDER BY created_at DESC
+        """,
+        (run_id,),
+    )
+    return [
+        FeedbackItem(
+            feedback_id=row["feedback_id"],
+            run_id=row["run_id"],
+            rating=row["rating"],
+            comment=row.get("comment"),
+            corrected_answer=row.get("corrected_answer"),
+            add_to_eval=bool(row.get("add_to_eval")),
+            created_at=_isoformat(row.get("created_at")),
+        )
+        for row in cursor.fetchall()
+    ]
+
+
+def _parse_evaluation_scores(value: Any) -> list[EvaluationScore]:
+    payload = value or []
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    return [EvaluationScore.model_validate(item) for item in payload]
+
+
+def _normalize_support_status(value: Any) -> str:
+    if value in {"supported", "unsupported", "conflicting"}:
+        return str(value)
+    if value == "conflict":
+        return "conflicting"
+    return "supported"
+
+
+def _isoformat(value: Any) -> str:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value or "")
+
+
+def _deduplicate_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduplicated: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduplicated.append(normalized)
+    return deduplicated
+
+
+def _extract_expected_facts(text: str) -> list[str]:
+    words = [word.strip(".,;:!?()[]{}").lower() for word in text.split()]
+    return [word for word in words if len(word) >= 6][:5]
 
 
 def delete_all_documents() -> None:

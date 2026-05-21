@@ -53,12 +53,14 @@ Completed:
 - evaluation harness now has a 50-case default golden set, adversarial and insufficient-evidence coverage, summary scorecards, CI threshold gates, and historical baseline comparison.
 - security guardrails now classify direct prompt injection, tool hijacking, data exfiltration, system prompt extraction, malicious retrieved content, output leakage, rate limits, and token/cost budgets.
 - red-team security eval cases and a `security_compliance` gate now run in CI.
+- researcher workspace UX now includes answer modes, run history, evidence table, source detail viewing, exports, feedback controls, and feedback-to-eval-case conversion.
 
 ### Current Agent Status
 
 The agent already works end to end for phase 1.
 
 - it receives a question through FastAPI;
+- it accepts answer modes for concise, detailed, or evidence-table-oriented responses;
 - it classifies the question and selects tools;
 - it plans execution with controlled `top_k`;
 - it queries hybrid internal search, corrective `web_search`, and `sql_query` when applicable;
@@ -72,6 +74,7 @@ The agent already works end to end for phase 1.
 - it verifies claim support before returning the answer;
 - it checks final output for system prompt and PII leakage before returning the answer;
 - it returns an answer, verified claims, structured sources, heuristic evaluation, and execution trace.
+- it persists runs for workspace history, source inspection, export, and feedback workflows.
 
 The critical outputs in the workflow already have explicit schemas:
 
@@ -86,8 +89,12 @@ The critical outputs in the workflow already have explicit schemas:
 
 - SPA built with `React + Vite + TypeScript`;
 - layout starts directly with `composer + output`, without a top status strip;
-- composer for the question and `top_k` control;
-- rich display for answer, verified claims, metrics, sources, and trace;
+- composer for the question, answer mode, and `top_k` control;
+- run history for reopening persisted research runs;
+- rich display for answer, verified claims, metrics, evidence table, source detail, and trace;
+- source viewer shows page/chunk metadata and highlights retrieved snippets or supporting quotes;
+- exports are available as Markdown, CSV, and JSON;
+- feedback controls persist useful/review signals and review feedback can be transformed into eval cases;
 - responsive design for desktop and mobile;
 - frontend ready to talk to the local FastAPI API.
 
@@ -113,6 +120,12 @@ The critical outputs in the workflow already have explicit schemas:
 - `sources`: structured source list;
 - `evaluation`: initial heuristic metrics;
 - `execution_trace`: flow steps and counts.
+- `/runs`: persisted run summaries for workspace history;
+- `/runs/{run_id}`: reproducible run detail with replay request;
+- `/runs/{run_id}/sources/{source_id}`: source detail with page/chunk text and highlights;
+- `/runs/{run_id}/export`: Markdown, CSV, or JSON export;
+- `/runs/{run_id}/feedback`: persisted researcher feedback;
+- `/feedback/eval-cases`: feedback converted into eval-ready cases.
 
 Each internal source may currently include:
 
@@ -166,11 +179,10 @@ Each returned claim includes:
 - manual validation of vector retrieval and the `/research` pipeline against the real internal corpus;
 - manual validation of global reranking between internal and web sources.
 - automated security guardrail tests for direct injection, malicious retrieved text, output leakage, rate limits, and red-team eval scoring.
+- automated workspace tests for run history, source retrieval, exports, answer modes, feedback, and feedback eval-case generation.
 
 Pending in phase 1:
 
-- improve per-step observability;
-- add researcher workspace UX for source inspection, run history, exports, and feedback;
 - add deployment and operations features such as auth, background workers, readiness, OpenTelemetry, and run metrics;
 - decide whether the next iteration should prioritize richer reranking, better evaluation, or conversation memory.
 

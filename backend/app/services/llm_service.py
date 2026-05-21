@@ -17,7 +17,11 @@ class LLMServiceError(RuntimeError):
     """Raised when the configured language model cannot be reached or parsed."""
 
 
-def build_research_messages(question: str, sources: list[SourceItem]) -> list[dict[str, Any]]:
+def build_research_messages(
+    question: str,
+    sources: list[SourceItem],
+    answer_mode: str = "detailed",
+) -> list[dict[str, Any]]:
     evidence_lines: list[str] = []
     for index, source in enumerate(sources, start=1):
         location = source.url or "internal_document"
@@ -53,6 +57,11 @@ def build_research_messages(question: str, sources: list[SourceItem]) -> list[di
             )
         )
 
+    mode_instruction = {
+        "concise": "Keep answer_summary short: 2 to 4 sentences, only the strongest evidence.",
+        "detailed": "Use a balanced answer_summary with enough context for a researcher to inspect the evidence.",
+        "evidence_table": "Structure answer_summary as evidence-first prose and make claims easy to display in an evidence table.",
+    }.get(answer_mode, "Use a balanced answer_summary with enough context for a researcher to inspect the evidence.")
     developer_message = (
         "You are a research synthesis assistant. "
         "Answer only with information grounded in the provided evidence. "
@@ -65,7 +74,8 @@ def build_research_messages(question: str, sources: list[SourceItem]) -> list[di
         "short supporting_quotes copied from the provided evidence. "
         "Use only source_id values that appear in the evidence. "
         "If a claim is inference rather than evidence, mark low confidence and include a limitation. "
-        "Set confidence conservatively and use uncertainty_note when evidence is incomplete."
+        "Set confidence conservatively and use uncertainty_note when evidence is incomplete. "
+        f"Answer mode: {answer_mode}. {mode_instruction}"
     )
     user_message = "\n\n".join(
         [
@@ -149,7 +159,11 @@ def _validate_claim_source_ids(synthesis: SynthesisOutput, sources: list[SourceI
     return synthesis.model_copy(update={"claims": claims}) if changed else synthesis
 
 
-def generate_research_answer(question: str, sources: list[SourceItem]) -> SynthesisOutput:
+def generate_research_answer(
+    question: str,
+    sources: list[SourceItem],
+    answer_mode: str = "detailed",
+) -> SynthesisOutput:
     if not settings.openai_api_key:
         raise LLMServiceError("OPENAI_API_KEY is not configured.")
 
@@ -157,7 +171,11 @@ def generate_research_answer(question: str, sources: list[SourceItem]) -> Synthe
     url = f"{base_url}/responses"
     payload = {
         "model": settings.openai_model,
-        "input": build_research_messages(question=question, sources=sources),
+        "input": build_research_messages(
+            question=question,
+            sources=sources,
+            answer_mode=answer_mode,
+        ),
         "max_output_tokens": 900,
         "text": {
             "format": {

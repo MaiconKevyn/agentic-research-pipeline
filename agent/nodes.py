@@ -229,6 +229,7 @@ def plan_research(state: ResearchState) -> ResearchState:
     objective = f"Answer the question: {state['question']}"
     execution_notes = [
         classification.rationale,
+        f"Use the requested answer mode: {state['answer_mode']}.",
         "Run evidence collection, apply global reranking, and synthesize only from the selected evidence.",
     ]
     if classification.query_kind == "off_topic":
@@ -255,6 +256,7 @@ def plan_research(state: ResearchState) -> ResearchState:
             *state["execution_trace"],
             f"planned_research_with_tools={','.join(plan.selected_tools)}",
             f"planned_top_k={plan.top_k}",
+            f"answer_mode={state['answer_mode']}",
         ]
     }
 
@@ -464,6 +466,7 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
         synthesis = generate_research_answer(
             question=state["question"],
             sources=state["sources"],
+            answer_mode=state["answer_mode"],
         )
         answer = synthesis.answer_summary
         execution_trace.append("llm_synthesis_success")

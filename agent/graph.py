@@ -51,7 +51,7 @@ def build_research_graph():
 research_graph = build_research_graph()
 
 
-def run_research(question: str, top_k: int = 5) -> ResearchResponse:
+def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -> ResearchResponse:
     run_id = str(uuid.uuid4())
     started_at = time.perf_counter()
     try:
@@ -67,6 +67,7 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
         "corpus_version_id": corpus_version_id,
         "question": question,
         "top_k": top_k,
+        "answer_mode": answer_mode,
         "classification": None,
         "input_safety": None,
         "retrieved_content_safety": None,
@@ -107,6 +108,7 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
                 run_id=run_id,
                 corpus_version_id=corpus_version_id,
                 question=final_state["question"],
+                answer_mode=final_state["answer_mode"],
                 classification=classification.query_kind if classification else None,
                 selected_tools=selected_tools,
                 model=settings.openai_model,

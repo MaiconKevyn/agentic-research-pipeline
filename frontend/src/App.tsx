@@ -1,4 +1,6 @@
-import { FormEvent, startTransition, useDeferredValue, useState } from "react";
+import { FormEvent, startTransition, useDeferredValue, useEffect, useState } from "react";
+
+type MetadataValue = string | number | boolean | null;
 
 type SourceItem = {
   source_id: string;
@@ -6,7 +8,7 @@ type SourceItem = {
   snippet: string;
   source_type: string;
   url: string | null;
-  metadata: Record<string, string | number | null>;
+  metadata: Record<string, MetadataValue>;
 };
 
 type EvaluationScore = {
@@ -36,6 +38,8 @@ type CorpusStats = {
   corpus_version_id: string;
 };
 
+type AnswerMode = "concise" | "detailed" | "evidence_table";
+
 type ResearchResponse = {
   run_id: string;
   corpus_version_id: string;
@@ -48,6 +52,38 @@ type ResearchResponse = {
   execution_trace: string[];
 };
 
+type RunSummary = {
+  run_id: string;
+  question: string;
+  answer_preview: string;
+  answer_mode: AnswerMode;
+  source_count: number;
+  created_at: string;
+  latency_ms: number | null;
+};
+
+type WorkspaceRun = ResearchResponse & {
+  answer_mode: AnswerMode;
+  created_at: string;
+  latency_ms: number | null;
+};
+
+type RunSourceDetail = {
+  run_id: string;
+  source_id: string;
+  title: string;
+  source_type: string;
+  snippet: string;
+  text: string;
+  source_document_id: string | null;
+  chunk_id: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  section_title: string | null;
+  highlights: string[];
+  metadata: Record<string, MetadataValue>;
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 const QUICK_PROMPTS = [
@@ -56,14 +92,30 @@ const QUICK_PROMPTS = [
   "How many indexed chunks are stored in the project corpus?",
 ];
 
+const ANSWER_MODES: { value: AnswerMode; label: string }[] = [
+  { value: "detailed", label: "Detailed" },
+  { value: "concise", label: "Concise" },
+  { value: "evidence_table", label: "Evidence table" },
+];
+
 function App() {
   const [question, setQuestion] = useState(QUICK_PROMPTS[0]);
   const [topK, setTopK] = useState(4);
-  const [result, setResult] = useState<ResearchResponse | null>(null);
+  const [answerMode, setAnswerMode] = useState<AnswerMode>("detailed");
+  const [result, setResult] = useState<WorkspaceRun | ResearchResponse | null>(null);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [selectedSource, setSelectedSource] = useState<RunSourceDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const deferredQuestion = useDeferredValue(question);
+
+  useEffect(() => {
+    void refreshHistory();
+  }, []);
 
   const loweredQuestion = deferredQuestion.toLowerCase();
   let questionLens = "General research";
@@ -75,6 +127,60 @@ function App() {
     questionLens = "Risk analysis";
   }
 
+  async function refreshHistory() {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs?limit=12`);
+      if (response.ok) {
+        setRuns((await response.json()) as RunSummary[]);
+      }
+    } catch {
+      setRuns([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function loadRun(runId: string) {
+    setError(null);
+    setSelectedSource(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}`);
+      if (!response.ok) {
+        setError(`Run lookup failed (${response.status})`);
+        return;
+      }
+      const payload = (await response.json()) as WorkspaceRun;
+      startTransition(() => {
+        setResult(payload);
+      });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Run lookup failed.");
+    }
+  }
+
+  async function loadSource(source: SourceItem) {
+    if (!result) {
+      return;
+    }
+    setSourceLoading(true);
+    setSelectedSource(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/runs/${result.run_id}/sources/${encodeURIComponent(source.source_id)}`,
+      );
+      if (response.ok) {
+        setSelectedSource((await response.json()) as RunSourceDetail);
+      } else {
+        setSelectedSource(sourceToDetail(result.run_id, source));
+      }
+    } catch {
+      setSelectedSource(sourceToDetail(result.run_id, source));
+    } finally {
+      setSourceLoading(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!question.trim()) {
@@ -84,6 +190,8 @@ function App() {
 
     setLoading(true);
     setError(null);
+    setFeedbackStatus(null);
+    setSelectedSource(null);
 
     try {
       const response = await fetch(`${API_BASE_URL}/research`, {
@@ -94,6 +202,7 @@ function App() {
         body: JSON.stringify({
           question,
           top_k: topK,
+          answer_mode: answerMode,
         }),
       });
 
@@ -105,6 +214,7 @@ function App() {
       startTransition(() => {
         setResult(payload);
       });
+      await refreshHistory();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -116,14 +226,38 @@ function App() {
     }
   }
 
+  async function submitFeedback(rating: "up" | "down") {
+    if (!result) {
+      return;
+    }
+    setFeedbackStatus(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/runs/${result.run_id}/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          rating,
+          comment: rating === "up" ? "Useful answer." : "Needs review.",
+          add_to_eval: rating === "down",
+          corrected_answer: null,
+        }),
+      });
+      setFeedbackStatus(response.ok ? "Feedback recorded" : `Feedback failed (${response.status})`);
+    } catch (requestError) {
+      setFeedbackStatus(requestError instanceof Error ? requestError.message : "Feedback failed.");
+    }
+  }
+
   return (
     <main className="shell">
       <section className="workspace">
-        <div className="panel panel-form">
+        <aside className="panel panel-form">
           <div className="panel-header">
             <div>
               <p className="panel-kicker">Composer</p>
-              <h2>New research run</h2>
+              <h2>Research run</h2>
             </div>
             <div className="lens-pill">{questionLens}</div>
           </div>
@@ -134,10 +268,23 @@ function App() {
               <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Example: What are the main challenges of RAG according to the internal corpus?"
+                placeholder="What does the internal corpus say about retrieval quality?"
                 rows={7}
               />
             </label>
+
+            <div className="mode-control" aria-label="Answer mode">
+              {ANSWER_MODES.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  className={answerMode === mode.value ? "mode-button active" : "mode-button"}
+                  onClick={() => setAnswerMode(mode.value)}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
 
             <div className="controls">
               <label className="field compact">
@@ -170,15 +317,44 @@ function App() {
             ))}
           </div>
 
-          {error ? <p className="error-banner">{error}</p> : null}
-        </div>
+          <section className="history-section">
+            <div className="section-heading">
+              <p className="section-label">Run history</p>
+              <span>{historyLoading ? "loading" : `${runs.length} runs`}</span>
+            </div>
+            <div className="history-list">
+              {runs.map((run) => (
+                <button
+                  key={run.run_id}
+                  type="button"
+                  className="history-item"
+                  onClick={() => void loadRun(run.run_id)}
+                >
+                  <strong>{run.question}</strong>
+                  <span>
+                    {run.answer_mode} / {run.source_count} sources
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
 
-        <div className="panel panel-results">
+          {error ? <p className="error-banner">{error}</p> : null}
+        </aside>
+
+        <section className="panel panel-results">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Output</p>
-              <h2>Execution result</h2>
+              <p className="panel-kicker">Workspace</p>
+              <h2>{result ? "Research output" : "No run selected"}</h2>
             </div>
+            {result ? (
+              <div className="action-row">
+                <a href={exportHref(result.run_id, "markdown")}>Markdown</a>
+                <a href={exportHref(result.run_id, "csv")}>CSV</a>
+                <a href={exportHref(result.run_id, "json")}>JSON</a>
+              </div>
+            ) : null}
           </div>
 
           {result ? (
@@ -203,8 +379,19 @@ function App() {
               </section>
 
               <section className="answer-card">
-                <p className="section-label">Answer</p>
+                <div className="section-heading">
+                  <p className="section-label">Answer</p>
+                  <div className="feedback-controls">
+                    <button type="button" onClick={() => void submitFeedback("up")}>
+                      Useful
+                    </button>
+                    <button type="button" onClick={() => void submitFeedback("down")}>
+                      Review
+                    </button>
+                  </div>
+                </div>
                 <p className="answer-text">{result.answer}</p>
+                {feedbackStatus ? <p className="feedback-status">{feedbackStatus}</p> : null}
               </section>
 
               {result.claims.length ? (
@@ -240,6 +427,68 @@ function App() {
                 </section>
               ) : null}
 
+              <section className="evidence-section">
+                <div className="section-heading">
+                  <p className="section-label">Evidence table</p>
+                  <span>{result.sources.length} items</span>
+                </div>
+                <div className="evidence-table-wrap">
+                  <table className="evidence-table">
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Type</th>
+                        <th>Page</th>
+                        <th>Rank</th>
+                        <th>Snippet</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.sources.map((source) => (
+                        <tr key={source.source_id} onClick={() => void loadSource(source)}>
+                          <td>{source.title}</td>
+                          <td>{source.source_type}</td>
+                          <td>{formatPages(source.metadata)}</td>
+                          <td>{formatRank(source.metadata)}</td>
+                          <td>{source.snippet}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="source-viewer">
+                <div className="section-heading">
+                  <p className="section-label">Source viewer</p>
+                  <span>{sourceLoading ? "loading" : selectedSource?.source_id ?? "none"}</span>
+                </div>
+                {selectedSource ? (
+                  <article className="source-detail">
+                    <div className="source-topline">
+                      <span className="source-type">{selectedSource.source_type}</span>
+                      {selectedSource.page_start ? (
+                        <span className="source-rank">{formatDetailPages(selectedSource)}</span>
+                      ) : null}
+                    </div>
+                    <h3>{selectedSource.title}</h3>
+                    <div className="source-meta">
+                      {renderMetaChip("chunk", selectedSource.chunk_id)}
+                      {renderMetaChip("section", selectedSource.section_title)}
+                      {renderMetaChip("document", selectedSource.source_document_id)}
+                    </div>
+                    <p className="source-text">
+                      {renderHighlightedText(selectedSource.text, selectedSource.highlights)}
+                    </p>
+                  </article>
+                ) : (
+                  <div className="empty-state compact-empty">
+                    <p className="section-label">Source detail</p>
+                    <h3>{result.sources.length ? "Select evidence to inspect." : "No evidence returned."}</h3>
+                  </div>
+                )}
+              </section>
+
               <section className="metrics-grid">
                 {result.evaluation.map((metric) => (
                   <article key={metric.metric} className="metric-card">
@@ -253,38 +502,6 @@ function App() {
                     <p>{metric.rationale}</p>
                   </article>
                 ))}
-              </section>
-
-              <section className="sources-section">
-                <div className="section-heading">
-                  <p className="section-label">Sources</p>
-                  <span>{result.sources.length} items</span>
-                </div>
-                <div className="source-list">
-                  {result.sources.map((source) => (
-                    <article key={source.source_id} className="source-card">
-                      <div className="source-topline">
-                        <span className="source-type">{source.source_type}</span>
-                        {source.metadata?.retrieval_rank ? (
-                          <span className="source-rank">rank {source.metadata.retrieval_rank}</span>
-                        ) : null}
-                      </div>
-                      <h3>{source.title}</h3>
-                      <p>{source.snippet}</p>
-                      <div className="source-meta">
-                        {renderMetaChip("file", source.metadata?.source_file)}
-                        {renderMetaChip("section", source.metadata?.section_title)}
-                        {renderPageChip(source.metadata)}
-                        {renderMetaChip("domain", source.metadata?.domain)}
-                      </div>
-                      {source.url ? (
-                        <a href={source.url} target="_blank" rel="noreferrer">
-                          Open source
-                        </a>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
               </section>
 
               <section className="trace-section">
@@ -303,18 +520,36 @@ function App() {
             </div>
           ) : (
             <div className="empty-state">
-              <p className="section-label">Ready to research</p>
-              <h3>Submit a question from the panel on the left.</h3>
-              <p>
-                The final answer will appear here with sources, heuristic scoring, and
-                execution trace.
-              </p>
+              <p className="section-label">Workspace</p>
+              <h3>Submit or reopen a research run.</h3>
             </div>
           )}
-        </div>
+        </section>
       </section>
     </main>
   );
+}
+
+function sourceToDetail(runId: string, source: SourceItem): RunSourceDetail {
+  return {
+    run_id: runId,
+    source_id: source.source_id,
+    title: source.title,
+    source_type: source.source_type,
+    snippet: source.snippet,
+    text: source.snippet,
+    source_document_id: valueToString(source.metadata.source_document_id) ?? null,
+    chunk_id: valueToString(source.metadata.chunk_id) ?? source.source_id,
+    page_start: valueToNumber(source.metadata.page_start),
+    page_end: valueToNumber(source.metadata.page_end),
+    section_title: valueToString(source.metadata.section_title) ?? null,
+    highlights: [source.snippet],
+    metadata: source.metadata,
+  };
+}
+
+function exportHref(runId: string, format: "markdown" | "csv" | "json") {
+  return `${API_BASE_URL}/runs/${runId}/export?format=${format}`;
 }
 
 function renderMetaChip(label: string, value: string | number | null | undefined) {
@@ -328,18 +563,64 @@ function renderMetaChip(label: string, value: string | number | null | undefined
   );
 }
 
-function renderPageChip(metadata: Record<string, string | number | null>) {
-  const pageStart = metadata?.page_start;
-  const pageEnd = metadata?.page_end;
-
-  if (typeof pageStart !== "number") {
-    return null;
+function formatPages(metadata: Record<string, MetadataValue>) {
+  const pageStart = valueToNumber(metadata.page_start);
+  const pageEnd = valueToNumber(metadata.page_end);
+  if (!pageStart) {
+    return "n/a";
   }
+  return pageEnd && pageEnd !== pageStart ? `${pageStart}-${pageEnd}` : `${pageStart}`;
+}
 
+function formatDetailPages(source: RunSourceDetail) {
+  if (!source.page_start) {
+    return "page n/a";
+  }
+  return source.page_end && source.page_end !== source.page_start
+    ? `pages ${source.page_start}-${source.page_end}`
+    : `page ${source.page_start}`;
+}
+
+function formatRank(metadata: Record<string, MetadataValue>) {
   return (
-    <span className="meta-chip">
-      {pageEnd && pageEnd !== pageStart ? `pages: ${pageStart}-${pageEnd}` : `page: ${pageStart}`}
-    </span>
+    valueToString(metadata.global_rerank_rank) ??
+    valueToString(metadata.hybrid_rank) ??
+    valueToString(metadata.retrieval_rank) ??
+    "n/a"
+  );
+}
+
+function valueToString(value: MetadataValue | undefined) {
+  if (value === null || value === undefined || typeof value === "boolean") {
+    return undefined;
+  }
+  return String(value);
+}
+
+function valueToNumber(value: MetadataValue | undefined) {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function renderHighlightedText(text: string, highlights: string[]) {
+  const highlight = highlights.find((candidate) => candidate && text.includes(candidate));
+  if (!highlight) {
+    return text;
+  }
+  const [before, afterFirst] = text.split(highlight);
+  const after = afterFirst ?? "";
+  return (
+    <>
+      {before}
+      <mark>{highlight}</mark>
+      {after}
+    </>
   );
 }
 

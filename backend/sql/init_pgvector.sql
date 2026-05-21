@@ -71,12 +71,23 @@ CREATE TABLE IF NOT EXISTS research_runs (
     classification TEXT NULL,
     selected_tools TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     model TEXT NULL,
+    answer_mode TEXT NOT NULL DEFAULT 'detailed',
     answer TEXT NOT NULL DEFAULT '',
     evaluation_scores JSONB NOT NULL DEFAULT '[]'::jsonb,
     execution_trace JSONB NOT NULL DEFAULT '[]'::jsonb,
     latency_ms INTEGER NULL,
     cost_estimate_usd NUMERIC(12, 6) NULL,
     error TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS run_feedback (
+    feedback_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES research_runs(run_id) ON DELETE CASCADE,
+    rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+    comment TEXT NULL,
+    corrected_answer TEXT NULL,
+    add_to_eval BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
