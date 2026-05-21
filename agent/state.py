@@ -19,6 +19,7 @@ class ResearchState(TypedDict):
     classification: QuestionClassification | None
     plan: ResearchPlan | None
     evidence_collection: EvidenceCollection | None
+    retrieval_quality: str
     synthesis: SynthesisOutput | None
     evaluation_result: EvaluationResult | None
     selected_tools: list[str]

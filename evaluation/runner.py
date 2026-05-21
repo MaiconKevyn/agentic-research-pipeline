@@ -7,6 +7,7 @@ from typing import Callable, Literal
 
 from agent.graph import run_research
 from backend.app.schemas.research import ResearchResponse
+from evaluation.metrics import mean_reciprocal_rank, ndcg_at_k, recall_at_k
 
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "sample_questions.json"
@@ -20,6 +21,8 @@ THRESHOLDS = {
     "groundedness": 0.90,
     "answer_relevance": 0.90,
     "retrieval_recall_at_10": 0.85,
+    "retrieval_mrr": 0.85,
+    "retrieval_ndcg_at_10": 0.85,
     "abstention_accuracy": 0.90,
 }
 
@@ -161,7 +164,10 @@ def _score_case(case: GoldenCase, response: ResearchResponse) -> dict[str, float
         if not forbidden_claims
         else 1.0 - (sum(1 for claim in forbidden_claims if claim in answer_lower) / len(forbidden_claims))
     )
-    source_recall = 1.0 if not required_sources else len(required_sources & source_ids) / len(required_sources)
+    ranked_source_ids = [source.source_id for source in response.sources]
+    source_recall = recall_at_k(ranked_source_ids, required_sources, k=10)
+    retrieval_mrr = mean_reciprocal_rank(ranked_source_ids, required_sources)
+    retrieval_ndcg = ndcg_at_k(ranked_source_ids, required_sources, k=10)
     has_required_citation = 1.0 if not required_sources else float(bool(required_sources & source_ids))
     abstained = "insufficient evidence" in answer_lower or "outside the project scope" in answer_lower
     expects_abstention = case.expected_answer_type == "insufficient_evidence"
@@ -174,6 +180,8 @@ def _score_case(case: GoldenCase, response: ResearchResponse) -> dict[str, float
         "groundedness": min(expected_facts_present, forbidden_claims_absent, has_required_citation),
         "answer_relevance": min(expected_facts_present, forbidden_claims_absent),
         "retrieval_recall_at_10": source_recall,
+        "retrieval_mrr": retrieval_mrr,
+        "retrieval_ndcg_at_10": retrieval_ndcg,
         "abstention_accuracy": 1.0 if abstained == expects_abstention else 0.0,
     }
 

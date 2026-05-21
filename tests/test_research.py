@@ -71,7 +71,7 @@ def test_research_route_returns_structured_response() -> None:
     assert response.sources[0].source_type == "web"
     assert response.evaluation
     assert "classified_question" in response.execution_trace
-    assert "vector_search_results=1" in response.execution_trace
+    assert "hybrid_search_results=1" in response.execution_trace
     assert "web_search_results=1" in response.execution_trace
     assert "global_rerank_applied" in response.execution_trace
     assert "synthesis_confidence=high" in response.execution_trace
@@ -113,3 +113,84 @@ def test_research_route_rejects_out_of_scope_questions_without_calling_tools() -
     assert "scope_guardrail_triggered" in response.execution_trace
     assert "scope_guardrail_skipped_evidence_collection" in response.execution_trace
     assert "scope_guardrail_response" in response.execution_trace
+
+
+def test_research_route_abstains_when_corrective_retrieval_stays_weak() -> None:
+    with (
+        patch("agent.graph.get_or_create_current_corpus_version_id", return_value="corpus-v1"),
+        patch("agent.graph.record_research_run", return_value=None),
+        patch(
+            "agent.graph.get_corpus_stats",
+            return_value=CorpusStats(
+                source_document_count=1,
+                chunk_count=2,
+                corpus_version_id="corpus-v1",
+            ),
+        ),
+        patch("agent.nodes.search_documents", return_value=[]),
+        patch("agent.nodes.search_web", return_value=[]),
+        patch("agent.nodes.generate_research_answer") as mocked_llm_synthesis,
+    ):
+        response = research(
+            ResearchRequest(
+                question="What does this project say about RAG retrieval?",
+                top_k=3,
+            )
+        )
+
+    mocked_llm_synthesis.assert_not_called()
+    assert response.sources == []
+    assert response.answer.startswith("Insufficient evidence")
+    assert "retrieval_quality=weak" in response.execution_trace
+    assert "corrective_web_search_triggered" in response.execution_trace
+    assert "weak_retrieval_abstention" in response.execution_trace
+
+
+def test_research_route_skips_web_search_when_internal_retrieval_is_sufficient() -> None:
+    sources = [
+        SourceItem(
+            source_id=f"source-{index}",
+            title=f"Internal source {index}",
+            snippet="Grounded RAG retrieval evidence.",
+            source_type="pdf_chunk",
+            url=None,
+            metadata={"retrieval_path": "hybrid", "hybrid_rank": index},
+        )
+        for index in range(1, 4)
+    ]
+
+    with (
+        patch("agent.graph.get_or_create_current_corpus_version_id", return_value="corpus-v1"),
+        patch("agent.graph.record_research_run", return_value=None),
+        patch(
+            "agent.graph.get_corpus_stats",
+            return_value=CorpusStats(
+                source_document_count=3,
+                chunk_count=9,
+                corpus_version_id="corpus-v1",
+            ),
+        ),
+        patch("agent.nodes.search_documents", return_value=sources),
+        patch("agent.nodes.search_web") as mocked_web_search,
+        patch("agent.nodes.rerank_sources_global", return_value=sources),
+        patch(
+            "agent.nodes.generate_research_answer",
+            return_value=SynthesisOutput(
+                answer="The corpus supports the answer [source-1].",
+                confidence="high",
+                cited_source_ids=["source-1"],
+                uncertainty_note=None,
+            ),
+        ),
+    ):
+        response = research(
+            ResearchRequest(
+                question="What does this project say about RAG retrieval?",
+                top_k=3,
+            )
+        )
+
+    mocked_web_search.assert_not_called()
+    assert len(response.sources) == 3
+    assert "retrieval_quality=sufficient" in response.execution_trace
+    assert "corrective_web_search_skipped" in response.execution_trace

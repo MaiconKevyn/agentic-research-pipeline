@@ -390,6 +390,58 @@ def search_similar_documents(query_embedding: list[float], top_k: int) -> list[S
         metadata = dict(row["metadata"] or {})
         metadata["retrieval_rank"] = rank
         metadata["retrieval_distance"] = round(float(row["distance"]), 6)
+        metadata["retrieval_path"] = "dense"
+        sources.append(
+            SourceItem(
+                source_id=row["document_id"],
+                title=row["title"],
+                snippet=row["snippet"],
+                source_type=row["source_type"],
+                url=row["source_url"],
+                metadata=metadata,
+            )
+        )
+    return sources
+
+
+def search_lexical_documents(query: str, top_k: int) -> list[SourceItem]:
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    WITH query AS (
+                        SELECT websearch_to_tsquery('english', %s) AS tsquery
+                    )
+                    SELECT
+                        document_id,
+                        title,
+                        source_type,
+                        source_url,
+                        metadata,
+                        LEFT(content, 500) AS snippet,
+                        ts_rank_cd(
+                            to_tsvector('english', title || ' ' || content),
+                            query.tsquery
+                        ) AS lexical_score
+                    FROM research_documents, query
+                    WHERE to_tsvector('english', title || ' ' || content) @@ query.tsquery
+                    ORDER BY lexical_score DESC, document_id
+                    LIMIT %s
+                    """,
+                    (query, top_k),
+                )
+                rows = cursor.fetchall()
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to search lexical documents: {exc}") from exc
+
+    sources: list[SourceItem] = []
+    for rank, row in enumerate(rows, start=1):
+        metadata = dict(row["metadata"] or {})
+        metadata["lexical_rank"] = rank
+        metadata["lexical_score"] = round(float(row["lexical_score"] or 0.0), 6)
+        metadata["retrieval_path"] = "lexical"
         sources.append(
             SourceItem(
                 source_id=row["document_id"],

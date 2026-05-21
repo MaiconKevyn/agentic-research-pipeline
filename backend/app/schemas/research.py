@@ -62,6 +62,7 @@ class EvidenceCollection(BaseModel):
     model_config = ConfigDict(extra="forbid")
     candidate_count: int = Field(..., ge=0)
     kept_count: int = Field(..., ge=0)
+    retrieval_quality: Literal["sufficient", "partial", "weak", "irrelevant"] = "weak"
     source_type_breakdown: dict[str, int] = Field(default_factory=dict)
 
 

@@ -99,6 +99,23 @@ def _source_type_breakdown(sources: list[SourceItem]) -> str:
     return ",".join(f"{source_type}:{count}" for source_type, count in sorted(counts.items()))
 
 
+def _grade_retrieval_quality(
+    *,
+    sources: list[SourceItem],
+    top_k: int,
+    query_kind: str,
+) -> str:
+    if not sources:
+        return "weak"
+    if query_kind == "operational" and any(source.source_type == "sql" for source in sources):
+        return "sufficient"
+    if len(sources) >= top_k:
+        return "sufficient"
+    if len(sources) >= max(1, top_k // 2):
+        return "partial"
+    return "weak"
+
+
 def _is_in_project_scope(question: str) -> bool:
     return any(keyword in question for keyword in PROJECT_SCOPE_KEYWORDS)
 
@@ -115,9 +132,9 @@ def _is_operational_query(question: str) -> bool:
 def classify_question(state: ResearchState) -> ResearchState:
     lowered = state["question"].lower()
     execution_trace = [*state["execution_trace"], "classified_question"]
-    selected_tools = ["vector_search", "web_search"]
+    selected_tools = ["vector_search"]
     query_kind = "research"
-    rationale = "General research question; use the internal corpus and web search as evidence sources."
+    rationale = "General research question; use hybrid internal retrieval first and escalate only when evidence is weak."
 
     if not _is_in_project_scope(lowered):
         query_kind = "off_topic"
@@ -190,20 +207,39 @@ def collect_evidence(state: ResearchState) -> ResearchState:
             "evidence_collection": EvidenceCollection(
                 candidate_count=0,
                 kept_count=0,
+                retrieval_quality="irrelevant",
                 source_type_breakdown={},
             ),
+            "retrieval_quality": "irrelevant",
             "sources": [],
             "execution_trace": execution_trace,
         }
 
     if "vector_search" in state["selected_tools"]:
         vector_results = search_documents(state["question"], state["top_k"])
-        execution_trace.append(f"vector_search_results={len(vector_results)}")
+        execution_trace.append(f"hybrid_search_results={len(vector_results)}")
         collected.extend(vector_results)
-    if "web_search" in state["selected_tools"]:
+
+    initial_quality = _grade_retrieval_quality(
+        sources=collected,
+        top_k=state["top_k"],
+        query_kind=classification.query_kind if classification else "research",
+    )
+    execution_trace.append(f"retrieval_quality={initial_quality}")
+
+    should_escalate_web = (
+        classification is not None
+        and classification.query_kind == "research"
+        and initial_quality in {"partial", "weak"}
+    )
+    if should_escalate_web:
+        execution_trace.append("corrective_web_search_triggered")
         web_results = search_web(state["question"], state["top_k"])
         execution_trace.append(f"web_search_results={len(web_results)}")
         collected.extend(web_results)
+    else:
+        execution_trace.append("corrective_web_search_skipped")
+
     if "sql_query" in state["selected_tools"]:
         sql_results = query_structured_data(state["question"])
         execution_trace.append(f"sql_query_results={len(sql_results)}")
@@ -226,9 +262,17 @@ def collect_evidence(state: ResearchState) -> ResearchState:
         execution_trace.append(f"global_rerank_error={exc}")
 
     kept_sources = reranked_sources[: state["top_k"]]
+    retrieval_quality = _grade_retrieval_quality(
+        sources=kept_sources,
+        top_k=state["top_k"],
+        query_kind=classification.query_kind if classification else "research",
+    )
+    if retrieval_quality != initial_quality:
+        execution_trace.append(f"retrieval_quality_after_correction={retrieval_quality}")
     evidence_collection = EvidenceCollection(
         candidate_count=len(reranked_sources),
         kept_count=len(kept_sources),
+        retrieval_quality=retrieval_quality,
         source_type_breakdown={
             source.source_type: sum(1 for item in kept_sources if item.source_type == source.source_type)
             for source in kept_sources
@@ -238,6 +282,7 @@ def collect_evidence(state: ResearchState) -> ResearchState:
     execution_trace.append(f"sources_kept_breakdown={_source_type_breakdown(kept_sources)}")
     return {
         "evidence_collection": evidence_collection,
+        "retrieval_quality": retrieval_quality,
         "sources": kept_sources,
         "execution_trace": execution_trace,
     }
@@ -261,11 +306,28 @@ def synthesize_answer(state: ResearchState) -> ResearchState:
             "execution_trace": execution_trace,
         }
 
+    if state["retrieval_quality"] in {"weak", "irrelevant"}:
+        execution_trace.append("weak_retrieval_abstention")
+        answer = (
+            "Insufficient evidence: the retrieval step did not find enough relevant support "
+            "to answer this question without risking an unsupported claim."
+        )
+        synthesis = SynthesisOutput(
+            answer=answer,
+            confidence="low",
+            cited_source_ids=[],
+            uncertainty_note="Retrieval quality was too weak for grounded synthesis.",
+        )
+        return {
+            "synthesis": synthesis,
+            "answer": answer,
+            "execution_trace": execution_trace,
+        }
+
     if not state["sources"]:
         return {
             "answer": (
-                "No evidence was collected yet. The initial pipeline exists, "
-                "but the required tools still need to return usable evidence."
+                "Insufficient evidence: no usable sources were collected for grounded synthesis."
             ),
             "execution_trace": execution_trace,
         }

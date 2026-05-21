@@ -3,6 +3,7 @@
 This folder stores the original sample benchmark questions for the research agent.
 
 The product-grade golden set now lives in `evaluation/golden/*.jsonl`.
+`evaluation/golden/retrieval.jsonl` is the retrieval-focused seed set for Recall@K, MRR, nDCG, and insufficient-evidence checks.
 
 Required fields per golden item:
 

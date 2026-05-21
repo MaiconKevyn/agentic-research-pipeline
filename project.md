@@ -47,6 +47,8 @@ Completed:
 - `sql_query` now reports source document count and chunk count separately for operational corpus questions.
 - golden-set evaluation harness added with JSONL cases, score reports, thresholds, and a CI-safe CLI mode.
 - PDF ingestion now uses deterministic checksum-based document identity, contextualized embedding text, parent-child chunk metadata, and per-document JSON ingestion reports.
+- hybrid retrieval added with PostgreSQL full-text search, dense + lexical Reciprocal Rank Fusion, retrieval quality grading, corrective web escalation, and weak-evidence abstention.
+- retrieval evaluation metrics now include `Recall@K`, `MRR`, and `nDCG`.
 
 ### Current Agent Status
 
@@ -55,7 +57,8 @@ The agent already works end to end for phase 1.
 - it receives a question through FastAPI;
 - it classifies the question and selects tools;
 - it plans execution with controlled `top_k`;
-- it queries `vector_search`, `web_search`, and `sql_query` when applicable;
+- it queries hybrid internal search, corrective `web_search`, and `sql_query` when applicable;
+- it grades retrieval quality before synthesis and abstains when support stays weak;
 - it rejects out-of-scope questions before calling retrieval tools;
 - it deduplicates evidence, applies global reranking, and keeps the most relevant sources;
 - it synthesizes the answer with `gpt-4o-mini` using validated structured output;
@@ -80,8 +83,8 @@ The critical outputs in the workflow already have explicit schemas:
 
 ### Current Tool Status
 
-- `vector_search`: operational with `OpenAI embeddings + PostgreSQL/pgvector`;
-- `web_search`: operational through the OpenAI Responses API;
+- `vector_search`: operational as dense + lexical hybrid retrieval over `OpenAI embeddings + PostgreSQL/pgvector + PostgreSQL full-text search`;
+- `web_search`: operational through the OpenAI Responses API and used as corrective retrieval when internal evidence is weak or partial;
 - `sql_query`: operational for simple corpus statistics.
 
 ### Current Internal Corpus Status
@@ -109,6 +112,9 @@ Each internal source may currently include:
 - `contextual_header`;
 - `page_start` and `page_end`;
 - `retrieval_rank`;
+- `lexical_rank`;
+- `hybrid_rank`;
+- `hybrid_score`;
 - `retrieval_distance`;
 - `global_rerank_score`;
 - `global_rerank_rank`.

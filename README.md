@@ -36,7 +36,7 @@ The system uses a controlled multi-step workflow rather than a single prompt. It
 
 ### Key Capabilities
 - **Agentic Workflow**: Explicit multi-step orchestration with LangGraph
-- **Hybrid Retrieval**: Internal vector search plus web search when relevant
+- **Hybrid Retrieval**: Dense pgvector search plus PostgreSQL full-text search with web escalation when evidence is weak
 - **Structured Outputs**: Pydantic-validated contracts across critical steps
 - **Project Scope Guardrails**: Rejects out-of-domain questions before retrieval
 - **Evidence Attribution**: Responses include structured sources and execution trace
@@ -72,12 +72,13 @@ LangGraph workflow
      - off_topic
   2. Plan retrieval
   3. Collect evidence
-     - vector_search  -> PostgreSQL + pgvector
-     - web_search     -> OpenAI Responses API web search
+     - vector_search  -> dense + lexical hybrid retrieval
+     - web_search     -> corrective OpenAI web search when evidence is weak
      - sql_query      -> PostgreSQL corpus stats
-  4. Deduplicate + global rerank
-  5. Structured answer synthesis -> OpenAI Responses API
-  6. Heuristic evaluation
+  4. Grade retrieval quality
+  5. Deduplicate + global rerank
+  6. Structured answer synthesis or insufficient-evidence abstention
+  7. Heuristic evaluation
   |
   v
 Structured API response
@@ -312,6 +313,8 @@ The golden harness stores JSONL cases in `evaluation/golden/` with required sour
 - `groundedness`
 - `answer_relevance`
 - `retrieval_recall_at_10`
+- `retrieval_mrr`
+- `retrieval_ndcg_at_10`
 - `abstention_accuracy`
 
 Current tests cover:
@@ -344,17 +347,18 @@ Run the live graph over the golden set with:
 The agent follows a fixed high-level flow:
 1. **Classify** the question
 2. **Plan** the retrieval strategy
-3. **Collect** evidence from vector search, web search, or SQL
-4. **Rerank** evidence globally
-5. **Synthesize** an answer with structured output
-6. **Evaluate** the response before returning it
+3. **Collect** evidence from hybrid internal retrieval, corrective web search, or SQL
+4. **Grade** retrieval quality as sufficient, partial, weak, or irrelevant
+5. **Rerank** evidence globally
+6. **Synthesize** an answer with structured output or abstain on weak evidence
+7. **Evaluate** the response before returning it
 
 If the question is outside the project domain, the workflow exits early with a scope refusal instead of running retrieval.
 
 ### Retrieval Strategy
 The system uses:
-- **Vector search** for internal PDF-based knowledge
-- **Web search** for external supporting evidence when relevant
+- **Hybrid internal search** that fuses dense pgvector results and PostgreSQL full-text results with Reciprocal Rank Fusion
+- **Web search** as a corrective step when internal evidence is partial or weak
 - **SQL query** for simple operational questions about the indexed corpus
 
 The storage model now separates source documents, document pages, document chunks, corpus versions, research runs, run sources, and claim-evidence links while preserving the original `research_documents` compatibility table.

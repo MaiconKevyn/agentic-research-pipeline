@@ -51,6 +51,10 @@ CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding
 CREATE INDEX IF NOT EXISTS idx_document_chunks_source_document_id
     ON document_chunks (source_document_id);
 
+CREATE INDEX IF NOT EXISTS idx_document_chunks_fts
+    ON document_chunks
+    USING gin (to_tsvector('english', contextualized_embedding_text));
+
 CREATE TABLE IF NOT EXISTS corpus_versions (
     corpus_version_id TEXT PRIMARY KEY,
     source_document_count INTEGER NOT NULL,
@@ -116,3 +120,7 @@ CREATE TABLE IF NOT EXISTS research_documents (
 CREATE INDEX IF NOT EXISTS idx_research_documents_embedding
     ON research_documents
     USING hnsw (embedding vector_cosine_ops);
+
+CREATE INDEX IF NOT EXISTS idx_research_documents_fts
+    ON research_documents
+    USING gin (to_tsvector('english', title || ' ' || content));

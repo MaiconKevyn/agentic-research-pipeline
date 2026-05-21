@@ -61,6 +61,7 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
         "classification": None,
         "plan": None,
         "evidence_collection": None,
+        "retrieval_quality": "weak",
         "synthesis": None,
         "evaluation_result": None,
         "selected_tools": [],

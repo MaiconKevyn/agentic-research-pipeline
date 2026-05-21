@@ -68,5 +68,7 @@ def test_run_evaluation_scores_golden_cases_and_writes_jsonl_report(tmp_path: Pa
     assert summary.metrics["schema_validity"] == 1.0
     assert summary.metrics["scope_compliance"] == 1.0
     assert summary.metrics["citation_precision"] == 1.0
+    assert summary.metrics["retrieval_mrr"] == 1.0
+    assert summary.metrics["retrieval_ndcg_at_10"] == 1.0
     assert report_path.exists()
     assert len(report_path.read_text(encoding="utf-8").strip().splitlines()) == 2
