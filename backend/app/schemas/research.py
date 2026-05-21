@@ -23,6 +23,12 @@ class ResearchRequest(BaseModel):
         default="detailed",
         description="Preferred answer shape for the research run.",
     )
+    workspace_id: str = Field(
+        default=settings.default_workspace_id,
+        min_length=1,
+        max_length=120,
+        description="Logical workspace for corpus and run history isolation.",
+    )
 
 
 class SourceItem(BaseModel):
@@ -129,6 +135,7 @@ class EvaluationResult(BaseModel):
 class ResearchResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str
+    workspace_id: str = settings.default_workspace_id
     corpus_version_id: str
     corpus_stats: CorpusStats
     question: str
@@ -181,6 +188,7 @@ class FeedbackEvalCase(BaseModel):
 class RunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str
+    workspace_id: str = settings.default_workspace_id
     question: str
     answer_preview: str
     answer_mode: Literal["concise", "detailed", "evidence_table"] = "detailed"
@@ -212,3 +220,14 @@ class RunSourceDetail(BaseModel):
     section_title: str | None = None
     highlights: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunMetricsSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run_count: int = Field(..., ge=0)
+    failure_count: int = Field(..., ge=0)
+    average_latency_ms: float | None = None
+    average_cost_estimate_usd: float | None = None
+    average_scores: dict[str, float] = Field(default_factory=dict)
+    runs_by_day: list[dict[str, Any]] = Field(default_factory=list)
+    quality_trend: list[dict[str, Any]] = Field(default_factory=list)

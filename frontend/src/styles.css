@@ -248,6 +248,49 @@ code {
   margin-top: 24px;
 }
 
+.metrics-summary {
+  margin-top: 24px;
+}
+
+.metrics-summary .section-heading button {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(7, 15, 19, 0.58);
+  color: var(--text);
+  cursor: pointer;
+  padding: 7px 10px;
+}
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ops-grid div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(7, 15, 19, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.ops-grid span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.ops-grid strong {
+  overflow: hidden;
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .history-list {
   display: grid;
   gap: 10px;
@@ -518,6 +561,16 @@ code {
   color: var(--warning);
   border: 1px solid rgba(248, 169, 59, 0.16);
   font-size: 0.8rem;
+}
+
+button.meta-chip {
+  cursor: pointer;
+  font: inherit;
+}
+
+.clickable-chip:hover {
+  background: rgba(248, 169, 59, 0.2);
+  border-color: rgba(248, 169, 59, 0.34);
 }
 
 .source-meta {

@@ -84,7 +84,19 @@ type RunSourceDetail = {
   metadata: Record<string, MetadataValue>;
 };
 
+type RunMetricsSummary = {
+  run_count: number;
+  failure_count: number;
+  average_latency_ms: number | null;
+  average_cost_estimate_usd: number | null;
+  average_scores: Record<string, number>;
+  runs_by_day: { date: string; count: number }[];
+  quality_trend: Record<string, string | number>[];
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_KEY = import.meta.env.VITE_API_KEY ?? "";
+const WORKSPACE_ID = import.meta.env.VITE_WORKSPACE_ID ?? "default";
 
 const QUICK_PROMPTS = [
   "What are the main challenges of RAG according to the internal corpus?",
@@ -104,6 +116,7 @@ function App() {
   const [answerMode, setAnswerMode] = useState<AnswerMode>("detailed");
   const [result, setResult] = useState<WorkspaceRun | ResearchResponse | null>(null);
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [metrics, setMetrics] = useState<RunMetricsSummary | null>(null);
   const [selectedSource, setSelectedSource] = useState<RunSourceDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -115,6 +128,7 @@ function App() {
 
   useEffect(() => {
     void refreshHistory();
+    void refreshMetrics();
   }, []);
 
   const loweredQuestion = deferredQuestion.toLowerCase();
@@ -130,7 +144,9 @@ function App() {
   async function refreshHistory() {
     setHistoryLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/runs?limit=12`);
+      const response = await fetch(`${API_BASE_URL}/runs?limit=12`, {
+        headers: authHeaders(),
+      });
       if (response.ok) {
         setRuns((await response.json()) as RunSummary[]);
       }
@@ -141,11 +157,26 @@ function App() {
     }
   }
 
+  async function refreshMetrics() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/ops/run-metrics?days=30`, {
+        headers: authHeaders(),
+      });
+      if (response.ok) {
+        setMetrics((await response.json()) as RunMetricsSummary);
+      }
+    } catch {
+      setMetrics(null);
+    }
+  }
+
   async function loadRun(runId: string) {
     setError(null);
     setSelectedSource(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/runs/${runId}`);
+      const response = await fetch(`${API_BASE_URL}/runs/${runId}`, {
+        headers: authHeaders(),
+      });
       if (!response.ok) {
         setError(`Run lookup failed (${response.status})`);
         return;
@@ -168,6 +199,7 @@ function App() {
     try {
       const response = await fetch(
         `${API_BASE_URL}/runs/${result.run_id}/sources/${encodeURIComponent(source.source_id)}`,
+        { headers: authHeaders() },
       );
       if (response.ok) {
         setSelectedSource((await response.json()) as RunSourceDetail);
@@ -198,11 +230,13 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders(),
         },
         body: JSON.stringify({
           question,
           top_k: topK,
           answer_mode: answerMode,
+          workspace_id: WORKSPACE_ID,
         }),
       });
 
@@ -215,6 +249,7 @@ function App() {
         setResult(payload);
       });
       await refreshHistory();
+      await refreshMetrics();
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -236,6 +271,7 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders(),
         },
         body: JSON.stringify({
           rating,
@@ -339,6 +375,33 @@ function App() {
             </div>
           </section>
 
+          <section className="metrics-summary">
+            <div className="section-heading">
+              <p className="section-label">Operations</p>
+              <button type="button" onClick={() => void refreshMetrics()}>
+                Refresh
+              </button>
+            </div>
+            <div className="ops-grid">
+              <div>
+                <span>Runs</span>
+                <strong>{metrics?.run_count ?? "n/a"}</strong>
+              </div>
+              <div>
+                <span>Failures</span>
+                <strong>{metrics?.failure_count ?? "n/a"}</strong>
+              </div>
+              <div>
+                <span>Latency</span>
+                <strong>{formatMs(metrics?.average_latency_ms)}</strong>
+              </div>
+              <div>
+                <span>Cost</span>
+                <strong>{formatCurrency(metrics?.average_cost_estimate_usd)}</strong>
+              </div>
+            </div>
+          </section>
+
           {error ? <p className="error-banner">{error}</p> : null}
         </aside>
 
@@ -409,11 +472,23 @@ function App() {
                         </div>
                         <p>{claim.claim_text}</p>
                         <div className="source-meta">
-                          {claim.supporting_source_ids.map((sourceId) => (
-                            <span key={sourceId} className="meta-chip">
-                              {sourceId}
-                            </span>
-                          ))}
+                          {claim.supporting_source_ids.map((sourceId) => {
+                            const source = result.sources.find((item) => item.source_id === sourceId);
+                            return source ? (
+                              <button
+                                key={sourceId}
+                                type="button"
+                                className="meta-chip clickable-chip"
+                                onClick={() => void loadSource(source)}
+                              >
+                                {sourceId}
+                              </button>
+                            ) : (
+                              <span key={sourceId} className="meta-chip">
+                                {sourceId}
+                              </span>
+                            );
+                          })}
                         </div>
                         {claim.supporting_quotes.map((quote) => (
                           <blockquote key={`${quote.source_id}-${quote.quote}`}>
@@ -530,6 +605,10 @@ function App() {
   );
 }
 
+function authHeaders(): Record<string, string> {
+  return API_KEY ? { "X-API-Key": API_KEY } : {};
+}
+
 function sourceToDetail(runId: string, source: SourceItem): RunSourceDetail {
   return {
     run_id: runId,
@@ -550,6 +629,14 @@ function sourceToDetail(runId: string, source: SourceItem): RunSourceDetail {
 
 function exportHref(runId: string, format: "markdown" | "csv" | "json") {
   return `${API_BASE_URL}/runs/${runId}/export?format=${format}`;
+}
+
+function formatMs(value: number | null | undefined) {
+  return typeof value === "number" ? `${Math.round(value)}ms` : "n/a";
+}
+
+function formatCurrency(value: number | null | undefined) {
+  return typeof value === "number" ? `$${value.toFixed(4)}` : "n/a";
 }
 
 function renderMetaChip(label: string, value: string | number | null | undefined) {

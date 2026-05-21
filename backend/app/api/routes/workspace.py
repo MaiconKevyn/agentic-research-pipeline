@@ -1,7 +1,8 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from backend.app.api.auth import require_api_key
 from backend.app.schemas.research import (
     FeedbackRequest,
     FeedbackResponse,
@@ -24,7 +25,7 @@ from backend.app.services.export_service import (
 )
 
 
-router = APIRouter(tags=["workspace"])
+router = APIRouter(tags=["workspace"], dependencies=[Depends(require_api_key)])
 
 
 @router.get("/runs", response_model=list[RunSummary])

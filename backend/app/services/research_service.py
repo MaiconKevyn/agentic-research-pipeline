@@ -7,4 +7,5 @@ def run_research_pipeline(payload: ResearchRequest) -> ResearchResponse:
         question=payload.question,
         top_k=payload.top_k,
         answer_mode=payload.answer_mode,
+        workspace_id=payload.workspace_id,
     )

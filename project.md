@@ -54,6 +54,7 @@ Completed:
 - security guardrails now classify direct prompt injection, tool hijacking, data exfiltration, system prompt extraction, malicious retrieved content, output leakage, rate limits, and token/cost budgets.
 - red-team security eval cases and a `security_compliance` gate now run in CI.
 - researcher workspace UX now includes answer modes, run history, evidence table, source detail viewing, exports, feedback controls, and feedback-to-eval-case conversion.
+- deployment and operations support now includes a backend Dockerfile, production compose profile, background ingestion worker, API-key auth readiness, workspace IDs, readiness checks, OpenTelemetry-style run traces, and run metrics for the UI dashboard.
 
 ### Current Agent Status
 
@@ -75,6 +76,7 @@ The agent already works end to end for phase 1.
 - it checks final output for system prompt and PII leakage before returning the answer;
 - it returns an answer, verified claims, structured sources, heuristic evaluation, and execution trace.
 - it persists runs for workspace history, source inspection, export, and feedback workflows.
+- it records workspace ID, latency, cost estimate, and OpenTelemetry-style trace fields for each persisted run.
 
 The critical outputs in the workflow already have explicit schemas:
 
@@ -95,6 +97,7 @@ The critical outputs in the workflow already have explicit schemas:
 - source viewer shows page/chunk metadata and highlights retrieved snippets or supporting quotes;
 - exports are available as Markdown, CSV, and JSON;
 - feedback controls persist useful/review signals and review feedback can be transformed into eval cases;
+- operations panel shows run count, failures, average latency, and average estimated cost;
 - responsive design for desktop and mobile;
 - frontend ready to talk to the local FastAPI API.
 
@@ -126,6 +129,8 @@ The critical outputs in the workflow already have explicit schemas:
 - `/runs/{run_id}/export`: Markdown, CSV, or JSON export;
 - `/runs/{run_id}/feedback`: persisted researcher feedback;
 - `/feedback/eval-cases`: feedback converted into eval-ready cases.
+- `/ready`: dependency-aware readiness check;
+- `/ops/run-metrics`: operator metrics for latency, cost, failures, and quality trends.
 
 Each internal source may currently include:
 
@@ -164,6 +169,7 @@ Each returned claim includes:
 - validation of `cited_source_ids` against the actually available sources;
 - scope rejection for questions unrelated to the project or its indexed domain;
 - direct prompt injection, tool abuse, data exfiltration, and system prompt extraction rejection;
+- optional API-key protection for research, workspace, and operations routes;
 - malicious retrieved-content detection and sanitization before synthesis;
 - output safety checks for hidden prompt, secret, and PII leakage;
 - resource controls for input length, request rate, retrieved tokens, web searches, and estimated model cost;
@@ -180,11 +186,11 @@ Each returned claim includes:
 - manual validation of global reranking between internal and web sources.
 - automated security guardrail tests for direct injection, malicious retrieved text, output leakage, rate limits, and red-team eval scoring.
 - automated workspace tests for run history, source retrieval, exports, answer modes, feedback, and feedback eval-case generation.
+- automated operations tests for readiness, auth behavior, run metrics, and ingestion worker behavior.
 
 Pending in phase 1:
 
-- add deployment and operations features such as auth, background workers, readiness, OpenTelemetry, and run metrics;
-- decide whether the next iteration should prioritize richer reranking, better evaluation, or conversation memory.
+- perform production hardening against a real external OpenTelemetry collector and a managed auth provider when moving beyond this local deployment profile.
 
 ## What This Project Should Train
 

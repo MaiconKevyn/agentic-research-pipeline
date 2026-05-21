@@ -141,6 +141,8 @@ agentic-research-pipeline/
 │   └── seed_documents.py              # Seeds the initial JSON corpus
 ├── tests/                             # Health, research, security, eval, rerank, LLM, and ingestion tests
 ├── docker-compose.yml                 # Local PostgreSQL + pgvector service
+├── Dockerfile.backend                  # Production backend image
+├── docs/DEPLOYMENT.md                  # Production compose, worker, auth, and ops notes
 ├── project.md                         # Project scope and implementation status
 ├── requirements.txt                   # Backend dependencies
 └── README.md                          # This file
@@ -284,6 +286,17 @@ For out-of-scope or unsafe questions, the system returns a structured refusal in
 - `GET /runs/{run_id}/export?format=markdown|csv|json`: export a run.
 - `POST /runs/{run_id}/feedback`: persist researcher feedback.
 - `GET /feedback/eval-cases`: convert review feedback into eval-ready cases.
+- `GET /ready`: dependency-aware readiness check.
+- `GET /ops/run-metrics`: latency, cost, failure, and quality trend dashboard data.
+
+## Deployment
+The production profile runs the FastAPI backend, PostgreSQL/pgvector, and the background ingestion worker:
+
+```bash
+docker compose --profile production up --build -d
+```
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for required environment variables, API-key auth, readiness checks, worker behavior, and operator metrics.
 
 ## Data Ingestion
 The ingestion pipeline performs the following steps:

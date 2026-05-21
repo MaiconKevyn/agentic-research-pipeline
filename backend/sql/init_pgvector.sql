@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS corpus_versions (
 
 CREATE TABLE IF NOT EXISTS research_runs (
     run_id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL DEFAULT 'default',
     corpus_version_id TEXT NOT NULL REFERENCES corpus_versions(corpus_version_id),
     question TEXT NOT NULL,
     classification TEXT NULL,

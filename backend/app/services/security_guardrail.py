@@ -49,6 +49,11 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4) if text else 0
 
 
+def estimate_run_cost_usd(*, question: str, source_snippets: list[str], output_tokens: int = 900) -> float:
+    input_tokens = estimate_tokens(question) + sum(estimate_tokens(snippet) for snippet in source_snippets)
+    return round((input_tokens + output_tokens) / 1_000_000, 6)
+
+
 def _contains_any(text: str, patterns: Iterable[str]) -> bool:
     lowered = text.lower()
     return any(pattern in lowered for pattern in patterns)
@@ -208,7 +213,10 @@ class SecurityGuardrailService:
 
     def assess_model_budget(self, *, question: str, sources: list[SourceItem]) -> SafetyDecision:
         input_tokens = estimate_tokens(question) + sum(estimate_tokens(source.snippet) for source in sources)
-        estimated_cost = (input_tokens + 900) / 1_000_000
+        estimated_cost = estimate_run_cost_usd(
+            question=question,
+            source_snippets=[source.snippet for source in sources],
+        )
         metadata = {
             "estimated_input_tokens": input_tokens,
             "estimated_model_cost_usd": round(estimated_cost, 6),

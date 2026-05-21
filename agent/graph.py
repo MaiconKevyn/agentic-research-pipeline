@@ -23,6 +23,8 @@ from backend.app.services.document_repository import (
     get_or_create_current_corpus_version_id,
     record_research_run,
 )
+from backend.app.services.security_guardrail import estimate_run_cost_usd
+from backend.app.services.telemetry import start_span
 
 
 def build_research_graph():
@@ -51,9 +53,21 @@ def build_research_graph():
 research_graph = build_research_graph()
 
 
-def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -> ResearchResponse:
+def run_research(
+    question: str,
+    top_k: int = 5,
+    answer_mode: str = "detailed",
+    workspace_id: str | None = None,
+) -> ResearchResponse:
     run_id = str(uuid.uuid4())
+    workspace_id = workspace_id or settings.default_workspace_id
     started_at = time.perf_counter()
+    span = start_span(
+        "research.run",
+        run_id=run_id,
+        workspace_id=workspace_id,
+        answer_mode=answer_mode,
+    )
     try:
         corpus_version_id = get_or_create_current_corpus_version_id()
     except DocumentRepositoryError as exc:
@@ -64,6 +78,7 @@ def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -
 
     state: ResearchState = {
         "run_id": run_id,
+        "workspace_id": workspace_id,
         "corpus_version_id": corpus_version_id,
         "question": question,
         "top_k": top_k,
@@ -86,6 +101,20 @@ def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -
     }
     final_state = research_graph.invoke(state)
     latency_ms = int((time.perf_counter() - started_at) * 1000)
+    cost_estimate_usd = estimate_run_cost_usd(
+        question=final_state["question"],
+        source_snippets=[source.snippet for source in final_state["sources"]],
+    )
+    final_state["execution_trace"] = [
+        *final_state["execution_trace"],
+        f"cost_estimate_usd={cost_estimate_usd}",
+        *span.finish(
+            corpus_version_id=corpus_version_id,
+            source_count=len(final_state["sources"]),
+            latency_ms=latency_ms,
+            cost_estimate_usd=cost_estimate_usd,
+        ),
+    ]
 
     try:
         corpus_stats = get_corpus_stats()
@@ -106,6 +135,7 @@ def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -
         record_research_run(
             ResearchRunRecord(
                 run_id=run_id,
+                workspace_id=workspace_id,
                 corpus_version_id=corpus_version_id,
                 question=final_state["question"],
                 answer_mode=final_state["answer_mode"],
@@ -118,6 +148,7 @@ def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -
                 evaluation_scores=final_state["evaluation"],
                 execution_trace=final_state["execution_trace"],
                 latency_ms=latency_ms,
+                cost_estimate_usd=cost_estimate_usd,
             )
         )
         final_state["execution_trace"] = [*final_state["execution_trace"], "research_run_persisted"]
@@ -129,6 +160,7 @@ def run_research(question: str, top_k: int = 5, answer_mode: str = "detailed") -
 
     return ResearchResponse(
         run_id=run_id,
+        workspace_id=workspace_id,
         corpus_version_id=corpus_version_id,
         corpus_stats=corpus_stats,
         question=final_state["question"],

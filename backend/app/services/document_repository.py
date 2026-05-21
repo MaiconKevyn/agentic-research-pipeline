@@ -20,6 +20,7 @@ from backend.app.schemas.research import (
     FeedbackRequest,
     ResearchRequest,
     RunSourceDetail,
+    RunMetricsSummary,
     RunSummary,
     SourceItem,
     WorkspaceRun,
@@ -37,6 +38,7 @@ class DocumentRepositoryError(RuntimeError):
 @dataclass(frozen=True)
 class ResearchRunRecord:
     run_id: str
+    workspace_id: str
     corpus_version_id: str
     question: str
     answer_mode: str
@@ -96,6 +98,18 @@ def _ensure_workspace_schema(cursor: Any) -> None:
         """
         ALTER TABLE research_runs
         ADD COLUMN IF NOT EXISTS answer_mode TEXT NOT NULL DEFAULT 'detailed'
+        """
+    )
+    cursor.execute(
+        """
+        ALTER TABLE research_runs
+        ADD COLUMN IF NOT EXISTS workspace_id TEXT NOT NULL DEFAULT 'default'
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_research_runs_workspace_created_at
+        ON research_runs (workspace_id, created_at DESC)
         """
     )
     cursor.execute(
@@ -577,6 +591,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                     """
                     INSERT INTO research_runs (
                         run_id,
+                        workspace_id,
                         corpus_version_id,
                         question,
                         classification,
@@ -590,9 +605,10 @@ def record_research_run(record: ResearchRunRecord) -> None:
                         cost_estimate_usd,
                         error
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (run_id) DO UPDATE
                     SET
+                        workspace_id = EXCLUDED.workspace_id,
                         corpus_version_id = EXCLUDED.corpus_version_id,
                         question = EXCLUDED.question,
                         classification = EXCLUDED.classification,
@@ -608,6 +624,7 @@ def record_research_run(record: ResearchRunRecord) -> None:
                     """,
                     (
                         record.run_id,
+                        record.workspace_id,
                         record.corpus_version_id,
                         record.question,
                         record.classification,
@@ -716,6 +733,7 @@ def list_research_runs(limit: int = 20) -> list[RunSummary]:
                     """
                     SELECT
                         r.run_id,
+                        r.workspace_id,
                         r.question,
                         LEFT(r.answer, 220) AS answer_preview,
                         r.answer_mode,
@@ -737,6 +755,7 @@ def list_research_runs(limit: int = 20) -> list[RunSummary]:
     return [
         RunSummary(
             run_id=row["run_id"],
+            workspace_id=row.get("workspace_id") or settings.default_workspace_id,
             question=row["question"],
             answer_preview=row["answer_preview"] or "",
             answer_mode=row.get("answer_mode") or "detailed",
@@ -757,6 +776,7 @@ def get_research_run(run_id: str) -> WorkspaceRun | None:
                     """
                     SELECT
                         r.run_id,
+                        r.workspace_id,
                         r.corpus_version_id,
                         r.question,
                         r.answer,
@@ -785,6 +805,7 @@ def get_research_run(run_id: str) -> WorkspaceRun | None:
     answer_mode = run_row.get("answer_mode") or "detailed"
     return WorkspaceRun(
         run_id=run_row["run_id"],
+        workspace_id=run_row.get("workspace_id") or settings.default_workspace_id,
         corpus_version_id=run_row["corpus_version_id"],
         corpus_stats=CorpusStats(
             source_document_count=int(run_row.get("source_document_count") or 0),
@@ -959,6 +980,65 @@ def list_feedback_as_eval_cases(limit: int = 100) -> list[FeedbackEvalCase]:
     return cases
 
 
+def get_run_metrics_summary(days: int = 30) -> RunMetricsSummary:
+    try:
+        ensure_schema()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS run_count,
+                        COUNT(*) FILTER (WHERE error IS NOT NULL) AS failure_count,
+                        AVG(latency_ms)::FLOAT AS average_latency_ms,
+                        AVG(cost_estimate_usd)::FLOAT AS average_cost_estimate_usd
+                    FROM research_runs
+                    WHERE created_at >= NOW() - (%s || ' days')::INTERVAL
+                    """,
+                    (days,),
+                )
+                summary_row = cursor.fetchone() or {}
+                cursor.execute(
+                    """
+                    SELECT
+                        DATE(created_at)::TEXT AS date,
+                        COUNT(*) AS count
+                    FROM research_runs
+                    WHERE created_at >= NOW() - (%s || ' days')::INTERVAL
+                    GROUP BY DATE(created_at)
+                    ORDER BY date
+                    """,
+                    (days,),
+                )
+                runs_by_day = [
+                    {"date": row["date"], "count": int(row["count"] or 0)}
+                    for row in cursor.fetchall()
+                ]
+                cursor.execute(
+                    """
+                    SELECT evaluation_scores, DATE(created_at)::TEXT AS date
+                    FROM research_runs
+                    WHERE created_at >= NOW() - (%s || ' days')::INTERVAL
+                    """,
+                    (days,),
+                )
+                score_rows = cursor.fetchall()
+    except Exception as exc:
+        raise DocumentRepositoryError(f"Failed to get run metrics: {exc}") from exc
+
+    average_scores = _aggregate_score_rows(score_rows)
+    quality_trend = _quality_trend(score_rows)
+    return RunMetricsSummary(
+        run_count=int(summary_row.get("run_count") or 0),
+        failure_count=int(summary_row.get("failure_count") or 0),
+        average_latency_ms=summary_row.get("average_latency_ms"),
+        average_cost_estimate_usd=summary_row.get("average_cost_estimate_usd"),
+        average_scores=average_scores,
+        runs_by_day=runs_by_day,
+        quality_trend=quality_trend,
+    )
+
+
 def _fetch_run_sources(cursor: Any, run_id: str) -> list[SourceItem]:
     cursor.execute(
         """
@@ -1086,6 +1166,46 @@ def _deduplicate_strings(values: list[str]) -> list[str]:
 def _extract_expected_facts(text: str) -> list[str]:
     words = [word.strip(".,;:!?()[]{}").lower() for word in text.split()]
     return [word for word in words if len(word) >= 6][:5]
+
+
+def _aggregate_score_rows(rows: list[dict[str, Any]]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for row in rows:
+        for score in _score_payload(row.get("evaluation_scores")):
+            metric = score.get("metric")
+            value = score.get("score")
+            if isinstance(metric, str) and isinstance(value, int | float):
+                totals[metric] = totals.get(metric, 0.0) + float(value)
+                counts[metric] = counts.get(metric, 0) + 1
+    return {
+        metric: round(total / counts[metric], 4)
+        for metric, total in sorted(totals.items())
+        if counts.get(metric)
+    }
+
+
+def _quality_trend(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_day: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_day.setdefault(row.get("date") or "", []).extend(_score_payload(row.get("evaluation_scores")))
+    trend: list[dict[str, Any]] = []
+    for date, scores in sorted(by_day.items()):
+        if not date:
+            continue
+        day_payload = {"date": date}
+        for metric, value in _aggregate_score_rows([{"evaluation_scores": scores}]).items():
+            day_payload[metric] = value
+        trend.append(day_payload)
+    return trend
+
+
+def _score_payload(value: Any) -> list[dict[str, Any]]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        return json.loads(value)
+    return list(value)
 
 
 def delete_all_documents() -> None:
