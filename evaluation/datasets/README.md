@@ -1,10 +1,30 @@
-# Evaluation Dataset
+# Evaluation Datasets
 
-This folder stores benchmark questions for the research agent.
+This folder stores the original sample benchmark questions for the research agent.
 
-Suggested fields per item:
+The product-grade golden set now lives in `evaluation/golden/*.jsonl`.
 
+Required fields per golden item:
+
+- `id`
 - `question`
+- `expected_answer_type`
+- `required_sources`
+- `expected_facts`
+- `forbidden_claims`
+- `answer_rubric`
+- `difficulty`
+- `query_category`
 - `top_k`
-- `expected_tool`
-- `acceptance_criteria`
+
+Run the CI-safe harness:
+
+```bash
+PYTHONPATH=. ./.venv/bin/python -m evaluation.run_eval --mode mock --fail-on-threshold
+```
+
+Run the live graph over the golden set:
+
+```bash
+PYTHONPATH=. ./.venv/bin/python -m evaluation.run_eval --mode live --output evaluation/reports/latest.jsonl
+```

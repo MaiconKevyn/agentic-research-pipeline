@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from backend.app.api.routes.research import research
-from backend.app.schemas.research import ResearchRequest, SourceItem, SynthesisOutput
+from backend.app.schemas.research import CorpusStats, ResearchRequest, SourceItem, SynthesisOutput
 
 
 def test_research_route_returns_structured_response() -> None:
@@ -30,6 +30,16 @@ def test_research_route_returns_structured_response() -> None:
     ]
 
     with (
+        patch("agent.graph.get_or_create_current_corpus_version_id", return_value="corpus-v1"),
+        patch("agent.graph.record_research_run", return_value=None),
+        patch(
+            "agent.graph.get_corpus_stats",
+            return_value=CorpusStats(
+                source_document_count=2,
+                chunk_count=7,
+                corpus_version_id="corpus-v1",
+            ),
+        ),
         patch("agent.nodes.search_documents", return_value=[mocked_sources[0]]),
         patch("agent.nodes.search_web", return_value=[mocked_sources[1]]),
         patch("agent.nodes.query_structured_data", return_value=[]),
@@ -52,6 +62,10 @@ def test_research_route_returns_structured_response() -> None:
         )
 
     assert response.question == "What are the main points of the project?"
+    assert response.run_id
+    assert response.corpus_version_id == "corpus-v1"
+    assert response.corpus_stats.source_document_count == 2
+    assert response.corpus_stats.chunk_count == 7
     assert response.answer == "Final answer grounded in the evidence [1] [2]."
     assert len(response.sources) == 2
     assert response.sources[0].source_type == "web"
@@ -66,6 +80,16 @@ def test_research_route_returns_structured_response() -> None:
 
 def test_research_route_rejects_out_of_scope_questions_without_calling_tools() -> None:
     with (
+        patch("agent.graph.get_or_create_current_corpus_version_id", return_value="corpus-v1"),
+        patch("agent.graph.record_research_run", return_value=None),
+        patch(
+            "agent.graph.get_corpus_stats",
+            return_value=CorpusStats(
+                source_document_count=0,
+                chunk_count=0,
+                corpus_version_id="corpus-v1",
+            ),
+        ),
         patch("agent.nodes.search_documents") as mocked_vector_search,
         patch("agent.nodes.search_web") as mocked_web_search,
         patch("agent.nodes.query_structured_data") as mocked_sql_query,

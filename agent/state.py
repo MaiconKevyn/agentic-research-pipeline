@@ -12,6 +12,8 @@ from backend.app.schemas.research import (
 
 
 class ResearchState(TypedDict):
+    run_id: str
+    corpus_version_id: str
     question: str
     top_k: int
     classification: QuestionClassification | None

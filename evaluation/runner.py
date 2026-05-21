@@ -1,16 +1,74 @@
+from __future__ import annotations
+
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Literal
 
 from agent.graph import run_research
-from evaluation.metrics import overall_score
+from backend.app.schemas.research import ResearchResponse
 
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "sample_questions.json"
+GOLDEN_DATASET_PATH = Path(__file__).parent / "golden" / "smoke.jsonl"
+DEFAULT_REPORT_PATH = Path(__file__).parent / "reports" / "latest.jsonl"
+
+THRESHOLDS = {
+    "schema_validity": 1.00,
+    "scope_compliance": 0.98,
+    "citation_precision": 0.95,
+    "groundedness": 0.90,
+    "answer_relevance": 0.90,
+    "retrieval_recall_at_10": 0.85,
+    "abstention_accuracy": 0.90,
+}
+
+ExpectedAnswerType = Literal["factual", "comparison", "operational", "insufficient_evidence"]
+
+
+@dataclass(frozen=True)
+class GoldenCase:
+    id: str
+    question: str
+    expected_answer_type: ExpectedAnswerType
+    required_sources: list[str]
+    expected_facts: list[str]
+    forbidden_claims: list[str]
+    answer_rubric: str
+    difficulty: str
+    query_category: str
+    top_k: int = 5
+
+
+@dataclass(frozen=True)
+class EvaluationSummary:
+    case_count: int
+    metrics: dict[str, float]
+    thresholds: dict[str, float]
+    thresholds_passed: bool
+    output_path: Path
+
+
+RunFunc = Callable[[str, int], ResearchResponse]
 
 
 def load_dataset() -> list[dict]:
     with DATASET_PATH.open("r", encoding="utf-8") as dataset_file:
         return json.load(dataset_file)
+
+
+def load_golden_cases(dataset_path: Path = GOLDEN_DATASET_PATH) -> list[GoldenCase]:
+    cases: list[GoldenCase] = []
+    with dataset_path.open("r", encoding="utf-8") as dataset_file:
+        for line_number, line in enumerate(dataset_file, start=1):
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            try:
+                cases.append(GoldenCase(**payload))
+            except TypeError as exc:
+                raise ValueError(f"Invalid golden case on line {line_number}: {exc}") from exc
+    return cases
 
 
 def run_benchmark() -> list[dict]:
@@ -20,9 +78,117 @@ def run_benchmark() -> list[dict]:
         results.append(
             {
                 "question": item["question"],
-                "overall_score": overall_score(response),
+                "overall_score": _mean(_score_case(_case_from_legacy_item(item), response).values()),
                 "answer": response.answer,
                 "trace": response.execution_trace,
             }
         )
     return results
+
+
+def run_evaluation(
+    *,
+    dataset_path: Path = GOLDEN_DATASET_PATH,
+    output_path: Path = DEFAULT_REPORT_PATH,
+    run_func: RunFunc = run_research,
+) -> EvaluationSummary:
+    cases = load_golden_cases(dataset_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    scored_cases: list[dict] = []
+
+    for case in cases:
+        response = run_func(case.question, case.top_k)
+        scores = _score_case(case, response)
+        scored_cases.append(
+            {
+                "case_id": case.id,
+                "question": case.question,
+                "query_category": case.query_category,
+                "difficulty": case.difficulty,
+                "run_id": response.run_id,
+                "corpus_version_id": response.corpus_version_id,
+                "scores": scores,
+                "answer": response.answer,
+                "source_ids": [source.source_id for source in response.sources],
+                "execution_trace": response.execution_trace,
+            }
+        )
+
+    with output_path.open("w", encoding="utf-8") as report_file:
+        for result in scored_cases:
+            report_file.write(json.dumps(result, sort_keys=True) + "\n")
+
+    metrics = _aggregate_metrics([result["scores"] for result in scored_cases])
+    thresholds_passed = all(metrics.get(metric, 0.0) >= threshold for metric, threshold in THRESHOLDS.items())
+    return EvaluationSummary(
+        case_count=len(scored_cases),
+        metrics=metrics,
+        thresholds=THRESHOLDS,
+        thresholds_passed=thresholds_passed,
+        output_path=output_path,
+    )
+
+
+def _case_from_legacy_item(item: dict) -> GoldenCase:
+    return GoldenCase(
+        id=item.get("id", item["question"]),
+        question=item["question"],
+        expected_answer_type=item.get("expected_answer_type", "factual"),
+        required_sources=item.get("required_sources", []),
+        expected_facts=item.get("expected_facts", []),
+        forbidden_claims=item.get("forbidden_claims", []),
+        answer_rubric=item.get("answer_rubric", "Legacy sample benchmark item."),
+        difficulty=item.get("difficulty", "unknown"),
+        query_category=item.get("query_category", "legacy"),
+        top_k=item.get("top_k", 5),
+    )
+
+
+def _score_case(case: GoldenCase, response: ResearchResponse) -> dict[str, float]:
+    answer_lower = response.answer.lower()
+    source_ids = {source.source_id for source in response.sources}
+    expected_facts = [fact.lower() for fact in case.expected_facts]
+    forbidden_claims = [claim.lower() for claim in case.forbidden_claims]
+    required_sources = set(case.required_sources)
+
+    expected_facts_present = (
+        1.0
+        if not expected_facts
+        else sum(1 for fact in expected_facts if fact in answer_lower) / len(expected_facts)
+    )
+    forbidden_claims_absent = (
+        1.0
+        if not forbidden_claims
+        else 1.0 - (sum(1 for claim in forbidden_claims if claim in answer_lower) / len(forbidden_claims))
+    )
+    source_recall = 1.0 if not required_sources else len(required_sources & source_ids) / len(required_sources)
+    has_required_citation = 1.0 if not required_sources else float(bool(required_sources & source_ids))
+    abstained = "insufficient evidence" in answer_lower or "outside the project scope" in answer_lower
+    expects_abstention = case.expected_answer_type == "insufficient_evidence"
+    scope_triggered = "scope_guardrail_triggered" in response.execution_trace
+
+    return {
+        "schema_validity": 1.0,
+        "scope_compliance": 1.0 if (not expects_abstention or abstained or scope_triggered) else 0.0,
+        "citation_precision": has_required_citation,
+        "groundedness": min(expected_facts_present, forbidden_claims_absent, has_required_citation),
+        "answer_relevance": min(expected_facts_present, forbidden_claims_absent),
+        "retrieval_recall_at_10": source_recall,
+        "abstention_accuracy": 1.0 if abstained == expects_abstention else 0.0,
+    }
+
+
+def _aggregate_metrics(case_scores: list[dict[str, float]]) -> dict[str, float]:
+    if not case_scores:
+        return {metric: 0.0 for metric in THRESHOLDS}
+    return {
+        metric: _mean(score[metric] for score in case_scores)
+        for metric in THRESHOLDS
+    }
+
+
+def _mean(values: object) -> float:
+    value_list = list(values)
+    if not value_list:
+        return 0.0
+    return sum(value_list) / len(value_list)

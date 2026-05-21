@@ -2,7 +2,7 @@ from backend.app.core.logging import get_logger
 from backend.app.schemas.research import SourceItem
 from backend.app.services.document_repository import (
     DocumentRepositoryError,
-    count_documents,
+    get_corpus_stats,
 )
 
 
@@ -15,24 +15,26 @@ def query_structured_data(question: str) -> list[SourceItem]:
         return []
 
     try:
-        total_documents = count_documents()
+        corpus_stats = get_corpus_stats()
     except DocumentRepositoryError as exc:
         logger.warning("SQL query unavailable: %s", exc)
         return []
 
     return [
         SourceItem(
-            source_id="sql-doc-count",
-            title="Indexed chunk count",
+            source_id="sql-corpus-stats",
+            title="Indexed corpus counts",
             snippet=(
-                f"There are currently {total_documents} indexed chunks stored in the project's "
-                "vector corpus."
+                f"There are currently {corpus_stats.source_document_count} source documents and "
+                f"{corpus_stats.chunk_count} indexed chunks stored in the project's corpus."
             ),
             source_type="sql",
             url=None,
             metadata={
-                "query_type": "count_indexed_chunks",
-                "chunk_total": total_documents,
+                "query_type": "count_indexed_corpus",
+                "source_document_count": corpus_stats.source_document_count,
+                "chunk_count": corpus_stats.chunk_count,
+                "corpus_version_id": corpus_stats.corpus_version_id,
             },
         )
     ]

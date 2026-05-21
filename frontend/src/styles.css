@@ -224,12 +224,40 @@ code {
 .answer-card,
 .metric-card,
 .source-card,
+.run-metadata,
 .trace-section,
 .empty-state {
   background: rgba(8, 17, 21, 0.62);
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 22px;
   padding: 20px;
+}
+
+.run-metadata {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.run-metadata div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.run-metadata span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.run-metadata strong {
+  overflow: hidden;
+  color: var(--text);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .answer-text {
@@ -354,7 +382,8 @@ code {
 
 @media (max-width: 1080px) {
   .workspace,
-  .metrics-grid {
+  .metrics-grid,
+  .run-metadata {
     grid-template-columns: 1fr;
   }
 }

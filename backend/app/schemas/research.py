@@ -33,6 +33,13 @@ class EvaluationScore(BaseModel):
     rationale: str
 
 
+class CorpusStats(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_document_count: int = Field(..., ge=0)
+    chunk_count: int = Field(..., ge=0)
+    corpus_version_id: str
+
+
 ToolName = Literal["vector_search", "web_search", "sql_query"]
 
 
@@ -74,6 +81,9 @@ class EvaluationResult(BaseModel):
 
 class ResearchResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    run_id: str
+    corpus_version_id: str
+    corpus_stats: CorpusStats
     question: str
     answer: str
     sources: list[SourceItem]

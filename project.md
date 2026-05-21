@@ -40,6 +40,12 @@ Completed:
 - more detailed execution trace per tool;
 - tests for `health`, `research`, PDF ingestion, reranking, and structured output;
 - UI copy, project documentation, and user-facing prompts translated to English.
+- repository README rewritten in a full project format with setup, usage, architecture, and license sections.
+- README corrected to match the actual implementation and no longer rely on an unrelated architecture image.
+- normalized source document, page, chunk, corpus version, research run, and run-source tables added while preserving the original `research_documents` path.
+- each `/research` response now includes `run_id`, `corpus_version_id`, source document count, and chunk count.
+- `sql_query` now reports source document count and chunk count separately for operational corpus questions.
+- golden-set evaluation harness added with JSONL cases, score reports, thresholds, and a CI-safe CLI mode.
 
 ### Current Agent Status
 

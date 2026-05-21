@@ -15,7 +15,16 @@ type EvaluationScore = {
   rationale: string;
 };
 
+type CorpusStats = {
+  source_document_count: number;
+  chunk_count: number;
+  corpus_version_id: string;
+};
+
 type ResearchResponse = {
+  run_id: string;
+  corpus_version_id: string;
+  corpus_stats: CorpusStats;
   question: string;
   answer: string;
   sources: SourceItem[];
@@ -158,6 +167,25 @@ function App() {
 
           {result ? (
             <div className="result-stack">
+              <section className="run-metadata">
+                <div>
+                  <span>Run</span>
+                  <strong>{result.run_id}</strong>
+                </div>
+                <div>
+                  <span>Corpus version</span>
+                  <strong>{result.corpus_version_id}</strong>
+                </div>
+                <div>
+                  <span>Source documents</span>
+                  <strong>{result.corpus_stats.source_document_count}</strong>
+                </div>
+                <div>
+                  <span>Indexed chunks</span>
+                  <strong>{result.corpus_stats.chunk_count}</strong>
+                </div>
+              </section>
+
               <section className="answer-card">
                 <p className="section-label">Answer</p>
                 <p className="answer-text">{result.answer}</p>

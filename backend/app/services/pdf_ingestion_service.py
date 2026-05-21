@@ -62,6 +62,7 @@ def _normalize_heading(value: str | None) -> str:
 def _build_chunk(
     *,
     file_path: Path,
+    file_checksum: str,
     title: str,
     chunk_text: str,
     section_title: str,
@@ -78,6 +79,8 @@ def _build_chunk(
     ).hexdigest()
     metadata = {
         "source_file": file_path.name,
+        "source_document_id": f"{file_path.name}:{file_checksum[:16]}",
+        "file_checksum": file_checksum,
         "document_title": title,
         "section_title": section_title,
         "section_index": section_index,
@@ -97,6 +100,7 @@ def _build_chunk(
 
 
 def _split_loaded_document(file_path: Path) -> list[dict]:
+    file_checksum = hashlib.sha256(file_path.read_bytes()).hexdigest()
     loader = PyMuPDF4LLMLoader(
         str(file_path.resolve()),
         mode="page",
@@ -151,6 +155,7 @@ def _split_loaded_document(file_path: Path) -> list[dict]:
                 chunks.append(
                     _build_chunk(
                         file_path=file_path,
+                        file_checksum=file_checksum,
                         title=title,
                         chunk_text=chunk_text,
                         section_title=section_title,

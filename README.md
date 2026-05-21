@@ -124,7 +124,10 @@ agentic-research-pipeline/
 │   ├── corpus/                        # Initial seed corpus
 │   └── raw/                           # Real PDFs for ingestion
 ├── evaluation/
-│   ├── datasets/                      # Evaluation prompts and docs
+│   ├── datasets/                      # Legacy sample prompts and docs
+│   ├── golden/                        # JSONL golden evaluation cases
+│   ├── reports/                       # Generated evaluation reports
+│   ├── run_eval.py                    # CI-ready evaluation CLI
 │   ├── metrics.py                     # Evaluation metrics
 │   └── runner.py                      # Evaluation runner
 ├── frontend/
@@ -241,7 +244,7 @@ What is the difference between LangChain and LangGraph in the indexed documents?
 
 **3. Ask an operational corpus question**
 ```text
-How many indexed chunks are stored in the project corpus?
+How many source documents and indexed chunks are stored in the project corpus?
 ```
 
 **4. Ask about the project architecture**
@@ -261,6 +264,9 @@ curl -X POST http://127.0.0.1:8000/research \
 
 ### Response Shape
 Each response includes:
+- **`run_id`**: unique identifier for the research run
+- **`corpus_version_id`**: corpus snapshot used by the run
+- **`corpus_stats`**: source document and indexed chunk counts
 - **`answer`**: final synthesized answer
 - **`sources`**: structured evidence used by the system
 - **`evaluation`**: heuristic metrics for the answer
@@ -274,7 +280,7 @@ The ingestion pipeline performs the following steps:
 2. **Extract text** using LangChain-compatible PDF tooling
 3. **Normalize sections** and split content into structural chunks
 4. **Generate embeddings** for each chunk
-5. **Store chunks** with metadata in PostgreSQL + pgvector
+5. **Store source documents, pages, chunks, and embeddings** in PostgreSQL + pgvector
 
 ### Indexed Corpus
 The current internal corpus is focused on:
@@ -287,15 +293,23 @@ The current internal corpus is focused on:
 The corpus is built from the PDFs in `data/raw`. The exact indexed chunk count may change as documents are added, removed, or re-ingested. See [project.md](project.md) for the latest recorded project status.
 
 ## Evaluation
-The project includes a lightweight evaluation layer intended to grow over time.
+The project includes a golden-set evaluation harness intended to grow over time.
 
-Current metrics include:
-- `citation_coverage`
+Current runtime metrics include:
 - `groundedness`
 - `answer_completeness`
 - `evidence_sufficiency`
 - `schema_validity`
 - `scope_compliance` for out-of-scope refusals
+
+The golden harness stores JSONL cases in `evaluation/golden/` with required sources, expected facts, forbidden claims, rubrics, difficulty, and query category. It writes JSONL reports to `evaluation/reports/` and checks the initial product thresholds for:
+- `schema_validity`
+- `scope_compliance`
+- `citation_precision`
+- `groundedness`
+- `answer_relevance`
+- `retrieval_recall_at_10`
+- `abstention_accuracy`
 
 Current tests cover:
 - health endpoint
@@ -304,10 +318,22 @@ Current tests cover:
 - reranking
 - structured output validation
 - scope guardrail behavior
+- run and corpus provenance
+- golden evaluation scoring
 
 Run the test suite with:
 ```bash
 ./.venv/bin/python -m pytest -q
+```
+
+Run the CI-safe evaluation harness with:
+```bash
+./.venv/bin/python -m evaluation.run_eval --mode mock --fail-on-threshold
+```
+
+Run the live graph over the golden set with:
+```bash
+./.venv/bin/python -m evaluation.run_eval --mode live --output evaluation/reports/latest.jsonl
 ```
 
 ## System Design
@@ -327,6 +353,8 @@ The system uses:
 - **Vector search** for internal PDF-based knowledge
 - **Web search** for external supporting evidence when relevant
 - **SQL query** for simple operational questions about the indexed corpus
+
+The storage model now separates source documents, document pages, document chunks, corpus versions, research runs, run sources, and claim-evidence links while preserving the original `research_documents` compatibility table.
 
 ### Structured Outputs
 Critical workflow steps use explicit Pydantic schemas, including:

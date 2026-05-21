@@ -1,3 +1,6 @@
+import time
+import uuid
+
 from langgraph.graph import END, START, StateGraph
 
 from agent.nodes import (
@@ -8,7 +11,15 @@ from agent.nodes import (
     synthesize_answer,
 )
 from agent.state import ResearchState
-from backend.app.schemas.research import ResearchResponse
+from backend.app.core.config import settings
+from backend.app.schemas.research import CorpusStats, ResearchResponse
+from backend.app.services.document_repository import (
+    DocumentRepositoryError,
+    ResearchRunRecord,
+    get_corpus_stats,
+    get_or_create_current_corpus_version_id,
+    record_research_run,
+)
 
 
 def build_research_graph():
@@ -32,7 +43,19 @@ research_graph = build_research_graph()
 
 
 def run_research(question: str, top_k: int = 5) -> ResearchResponse:
+    run_id = str(uuid.uuid4())
+    started_at = time.perf_counter()
+    try:
+        corpus_version_id = get_or_create_current_corpus_version_id()
+    except DocumentRepositoryError as exc:
+        corpus_version_id = "corpus-unavailable"
+        version_trace = [f"corpus_version_error={exc}"]
+    else:
+        version_trace = [f"corpus_version_id={corpus_version_id}"]
+
     state: ResearchState = {
+        "run_id": run_id,
+        "corpus_version_id": corpus_version_id,
         "question": question,
         "top_k": top_k,
         "classification": None,
@@ -44,11 +67,53 @@ def run_research(question: str, top_k: int = 5) -> ResearchResponse:
         "sources": [],
         "answer": "",
         "evaluation": [],
-        "execution_trace": [],
+        "execution_trace": [f"run_id={run_id}", *version_trace],
     }
     final_state = research_graph.invoke(state)
+    latency_ms = int((time.perf_counter() - started_at) * 1000)
+
+    try:
+        corpus_stats = get_corpus_stats()
+    except DocumentRepositoryError as exc:
+        corpus_stats = CorpusStats(
+            source_document_count=0,
+            chunk_count=0,
+            corpus_version_id=corpus_version_id,
+        )
+        final_state["execution_trace"] = [
+            *final_state["execution_trace"],
+            f"corpus_stats_error={exc}",
+        ]
+
+    classification = final_state.get("classification")
+    selected_tools = final_state.get("selected_tools", [])
+    try:
+        record_research_run(
+            ResearchRunRecord(
+                run_id=run_id,
+                corpus_version_id=corpus_version_id,
+                question=final_state["question"],
+                classification=classification.query_kind if classification else None,
+                selected_tools=selected_tools,
+                model=settings.openai_model,
+                answer=final_state["answer"],
+                sources=final_state["sources"],
+                evaluation_scores=final_state["evaluation"],
+                execution_trace=final_state["execution_trace"],
+                latency_ms=latency_ms,
+            )
+        )
+        final_state["execution_trace"] = [*final_state["execution_trace"], "research_run_persisted"]
+    except DocumentRepositoryError as exc:
+        final_state["execution_trace"] = [
+            *final_state["execution_trace"],
+            f"research_run_persistence_error={exc}",
+        ]
 
     return ResearchResponse(
+        run_id=run_id,
+        corpus_version_id=corpus_version_id,
+        corpus_stats=corpus_stats,
         question=final_state["question"],
         answer=final_state["answer"],
         sources=final_state["sources"],
