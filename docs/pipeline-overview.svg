@@ -1,0 +1,223 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1120" viewBox="0 0 1440 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Agentic Research Pipeline overview</title>
+  <desc id="desc">Scientific infographic of the current research pipeline: researcher workspace, FastAPI, LangGraph workflow, evidence tools, data layer, evaluation, persistence, and operations metrics.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#315c73"/>
+    </marker>
+    <marker id="arrow-soft" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 11 5.5 L 0 11 z" fill="#6d7c85"/>
+    </marker>
+    <marker id="arrow-flow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 8 4 L 0 8 z" fill="#6d7c85"/>
+    </marker>
+    <filter id="card-shadow" x="-8%" y="-10%" width="116%" height="125%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#20303a" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .page { fill: #f7fafc; }
+      .title { font: 700 30px Arial, Helvetica, sans-serif; fill: #143241; }
+      .subtitle { font: 400 15px Arial, Helvetica, sans-serif; fill: #52636d; }
+      .panel-title { font: 700 15px Arial, Helvetica, sans-serif; fill: #173746; }
+      .section-title { font: 700 13px Arial, Helvetica, sans-serif; fill: #315c73; text-transform: uppercase; }
+      .node-title { font: 700 14px Arial, Helvetica, sans-serif; fill: #18313f; }
+      .node-text { font: 400 12px Arial, Helvetica, sans-serif; fill: #3d4f59; }
+      .small-text { font: 400 11px Arial, Helvetica, sans-serif; fill: #546771; }
+      .micro-text { font: 400 10px Arial, Helvetica, sans-serif; fill: #64757e; }
+      .caption { font: 600 11px Arial, Helvetica, sans-serif; fill: #42606f; }
+      .panel { fill: #ffffff; stroke: #c7d7df; stroke-width: 1.4; rx: 18; filter: url(#card-shadow); }
+      .lane { fill: #eef6f8; stroke: #b8d1dc; stroke-width: 1.2; rx: 16; }
+      .node { fill: #ffffff; stroke: #b9cbd3; stroke-width: 1.2; rx: 12; }
+      .node-blue { fill: #edf7fb; stroke: #7db6cf; stroke-width: 1.2; rx: 12; }
+      .node-green { fill: #edf8f3; stroke: #7dbb9c; stroke-width: 1.2; rx: 12; }
+      .node-amber { fill: #fff7e8; stroke: #d4a954; stroke-width: 1.2; rx: 12; }
+      .node-red { fill: #fff0f0; stroke: #d58a8a; stroke-width: 1.2; rx: 12; }
+      .pill { fill: #f2f7f9; stroke: #c4d4db; stroke-width: 1; rx: 14; }
+      .pill-green { fill: #eaf7f0; stroke: #8bc3a4; stroke-width: 1; rx: 14; }
+      .pill-amber { fill: #fff4d9; stroke: #d6ab52; stroke-width: 1; rx: 14; }
+      .line { stroke: #315c73; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .line-soft { stroke: #6d7c85; stroke-width: 1.8; fill: none; marker-end: url(#arrow-soft); }
+      .line-flow { stroke: #6d7c85; stroke-width: 1.8; fill: none; marker-end: url(#arrow-flow); }
+      .line-dashed { stroke: #6d7c85; stroke-width: 1.8; fill: none; stroke-dasharray: 6 5; marker-end: url(#arrow-soft); }
+      .no-arrow { stroke: #d3e0e6; stroke-width: 1.1; fill: none; }
+    </style>
+  </defs>
+
+  <rect class="page" width="1440" height="1120"/>
+
+  <text class="title" x="720" y="46" text-anchor="middle">Agentic Research Pipeline</text>
+  <text class="subtitle" x="720" y="72" text-anchor="middle">Deterministic LangGraph workflow for grounded answers, source inspection, evaluation, and operations monitoring</text>
+
+  <!-- Entry path -->
+  <rect class="node-blue" x="84" y="112" width="230" height="76"/>
+  <text class="node-title" x="199" y="141" text-anchor="middle">Researcher</text>
+  <text class="node-text" x="199" y="163" text-anchor="middle">question, answer mode, top_k</text>
+
+  <rect class="node-blue" x="384" y="112" width="260" height="76"/>
+  <text class="node-title" x="514" y="141" text-anchor="middle">React + Vite workspace</text>
+  <text class="node-text" x="514" y="163" text-anchor="middle">composer, history, evidence UI</text>
+
+  <rect class="node-blue" x="714" y="112" width="260" height="76"/>
+  <text class="node-title" x="844" y="141" text-anchor="middle">FastAPI backend</text>
+  <text class="node-text" x="844" y="163" text-anchor="middle">API key, workspace_id, request schema</text>
+
+  <path class="line" d="M 314 150 L 374 150"/>
+  <path class="line" d="M 644 150 L 704 150"/>
+  <path class="line" d="M 844 188 C 844 214, 792 218, 744 238"/>
+
+  <!-- Main workflow panel -->
+  <rect class="panel" x="68" y="230" width="872" height="650"/>
+  <text class="panel-title" x="104" y="262">LangGraph workflow</text>
+  <text class="small-text" x="104" y="282">Stateful graph nodes with explicit Pydantic contracts and execution trace events</text>
+
+  <rect class="lane" x="104" y="304" width="360" height="560"/>
+  <text class="section-title" x="124" y="329">Control path</text>
+
+  <rect class="node" x="124" y="348" width="320" height="48"/>
+  <text class="node-title" x="144" y="371">1. Input safety</text>
+  <text class="node-text" x="144" y="391">rate limit, token estimate, prompt injection scan</text>
+
+  <rect class="node" x="124" y="410" width="320" height="50"/>
+  <text class="node-title" x="144" y="433">2. Classify question</text>
+  <text class="node-text" x="144" y="453">research, operational, off-topic, security-blocked</text>
+
+  <rect class="node" x="124" y="474" width="320" height="50"/>
+  <text class="node-title" x="144" y="497">3. Plan research</text>
+  <text class="node-text" x="144" y="517">select tools, top_k, answer mode, execution notes</text>
+
+  <rect class="node-blue" x="124" y="538" width="320" height="60"/>
+  <text class="node-title" x="144" y="562">4. Collect evidence</text>
+  <text class="node-text" x="144" y="583">call selected tools, then normalize candidate sources</text>
+
+  <rect class="node-amber" x="124" y="616" width="320" height="72"/>
+  <text class="node-title" x="144" y="640">5. Synthesis decision</text>
+  <text class="node-text" x="144" y="660">weak evidence: abstain</text>
+  <text class="node-text" x="144" y="678">supported evidence: budget check + structured answer</text>
+
+  <rect class="node-green" x="124" y="716" width="320" height="46"/>
+  <text class="node-title" x="144" y="738">6. Claim verification</text>
+  <text class="node-text" x="144" y="756">remove unsupported claim/source mappings</text>
+
+  <rect class="node-green" x="124" y="780" width="320" height="46"/>
+  <text class="node-title" x="144" y="802">7. Output safety</text>
+  <text class="node-text" x="144" y="820">leakage scan and safe refusal fallback</text>
+
+  <rect class="node-green" x="124" y="840" width="320" height="24"/>
+  <text class="caption" x="284" y="856" text-anchor="middle">8. Heuristic evaluation</text>
+
+  <path class="line-flow" d="M 284 398 L 284 404"/>
+  <path class="line-flow" d="M 284 462 L 284 468"/>
+  <path class="line-flow" d="M 284 526 L 284 532"/>
+  <path class="line-flow" d="M 284 600 L 284 610"/>
+  <path class="line-flow" d="M 284 690 L 284 710"/>
+  <path class="line-flow" d="M 284 764 L 284 774"/>
+  <path class="line-flow" d="M 284 828 L 284 834"/>
+
+  <!-- Evidence workbench -->
+  <rect class="lane" x="504" y="304" width="396" height="560"/>
+  <text class="section-title" x="524" y="329">Evidence workbench</text>
+
+  <rect class="node-blue" x="526" y="350" width="350" height="62"/>
+  <text class="node-title" x="546" y="374">Hybrid internal retrieval</text>
+  <text class="node-text" x="546" y="394">OpenAI embeddings + pgvector dense search</text>
+  <text class="node-text" x="546" y="409">PostgreSQL full-text search + RRF fusion</text>
+
+  <rect class="node-blue" x="526" y="434" width="350" height="54"/>
+  <text class="node-title" x="546" y="457">SQL corpus statistics</text>
+  <text class="node-text" x="546" y="477">structured operational facts when count queries need them</text>
+
+  <rect class="node-amber" x="526" y="510" width="350" height="54"/>
+  <text class="node-title" x="546" y="533">Corrective web retrieval</text>
+  <text class="node-text" x="546" y="553">OpenAI web search only when research evidence is weak</text>
+
+  <rect class="node-green" x="526" y="586" width="350" height="68"/>
+  <text class="node-title" x="546" y="610">Quality gate + global rerank</text>
+  <text class="node-text" x="546" y="630">deduplicate, rerank, sanitize retrieved text, cap tokens</text>
+  <text class="node-text" x="546" y="646">quality states: sufficient, partial, weak, irrelevant</text>
+
+  <rect class="pill-green" x="526" y="688" width="160" height="42"/>
+  <text class="caption" x="606" y="714" text-anchor="middle">grounded path</text>
+  <rect class="pill-amber" x="716" y="688" width="160" height="42"/>
+  <text class="caption" x="796" y="714" text-anchor="middle">abstention path</text>
+
+  <rect class="node" x="526" y="762" width="350" height="58"/>
+  <text class="node-title" x="546" y="786">Evidence package</text>
+  <text class="node-text" x="546" y="806">top-k sources with IDs, snippets, pages, and retrieval path</text>
+
+  <path class="line" d="M 444 568 C 475 568, 482 381, 516 381"/>
+  <path class="line-flow" d="M 701 414 L 701 427"/>
+  <path class="line-flow" d="M 701 490 L 701 503"/>
+  <path class="line-flow" d="M 701 566 L 701 579"/>
+  <path class="line" d="M 526 620 C 486 620, 483 652, 454 652"/>
+  <path class="line-flow" d="M 701 656 L 701 681"/>
+  <path class="line-flow" d="M 701 732 L 701 754"/>
+
+  <!-- Data and tools -->
+  <rect class="panel" x="984" y="230" width="372" height="548"/>
+  <text class="panel-title" x="1020" y="262">Data and tool layer</text>
+  <text class="small-text" x="1020" y="282">Deterministic corpus preparation plus model-backed services</text>
+
+  <rect class="node" x="1020" y="316" width="300" height="52"/>
+  <text class="node-title" x="1040" y="339">PDF corpus</text>
+  <text class="node-text" x="1040" y="359">data/raw documents and source metadata</text>
+
+  <rect class="node-green" x="1020" y="392" width="300" height="64"/>
+  <text class="node-title" x="1040" y="416">Ingestion pipeline</text>
+  <text class="node-text" x="1040" y="436">parse pages, normalize sections, create chunks</text>
+  <text class="node-text" x="1040" y="451">add context headers and JSON ingestion reports</text>
+
+  <rect class="node-blue" x="1020" y="480" width="300" height="74"/>
+  <text class="node-title" x="1040" y="504">PostgreSQL + pgvector</text>
+  <text class="node-text" x="1040" y="524">source_documents, pages, chunks, embeddings</text>
+  <text class="node-text" x="1040" y="540">HNSW vector index + full-text index</text>
+
+  <rect class="node-amber" x="1020" y="578" width="300" height="74"/>
+  <text class="node-title" x="1040" y="602">OpenAI services</text>
+  <text class="node-text" x="1040" y="622">text-embedding-3-small, GPT-4o mini synthesis</text>
+  <text class="node-text" x="1040" y="638">Responses API web search when corrective path runs</text>
+
+  <rect class="node" x="1020" y="676" width="300" height="52"/>
+  <text class="node-title" x="1040" y="699">Golden eval datasets</text>
+  <text class="node-text" x="1040" y="719">smoke, retrieval, security thresholds for CI gates</text>
+
+  <path class="line-flow" d="M 1170 370 L 1170 385"/>
+  <path class="line-flow" d="M 1170 458 L 1170 473"/>
+  <path class="line" d="M 1020 517 C 960 517, 944 381, 886 381"/>
+  <path class="line" d="M 1020 616 C 962 616, 945 537, 886 537"/>
+  <!-- Outputs and persistence -->
+  <rect class="panel" x="68" y="918" width="872" height="132"/>
+  <text class="panel-title" x="104" y="950">Structured API response to the workspace</text>
+  <rect class="pill" x="104" y="970" width="174" height="44"/>
+  <text class="caption" x="191" y="996" text-anchor="middle">answer + limitations</text>
+  <rect class="pill" x="304" y="970" width="174" height="44"/>
+  <text class="caption" x="391" y="996" text-anchor="middle">clickable sources</text>
+  <rect class="pill" x="504" y="970" width="174" height="44"/>
+  <text class="caption" x="591" y="996" text-anchor="middle">verified claims</text>
+  <rect class="pill" x="704" y="970" width="174" height="44"/>
+  <text class="caption" x="791" y="990" text-anchor="middle">scores + trace</text>
+  <text class="micro-text" x="791" y="1005" text-anchor="middle">evaluation and execution_trace</text>
+
+  <rect class="panel" x="984" y="822" width="372" height="228"/>
+  <text class="panel-title" x="1020" y="854">Persistence and operations</text>
+  <rect class="node" x="1020" y="878" width="300" height="52"/>
+  <text class="node-title" x="1040" y="901">Research run record</text>
+  <text class="node-text" x="1040" y="921">workspace_id, request, answer, sources, claims</text>
+  <rect class="node" x="1020" y="954" width="300" height="52"/>
+  <text class="node-title" x="1040" y="977">Workspace UX artifacts</text>
+  <text class="node-text" x="1040" y="997">history, source viewer, exports, feedback-to-evals</text>
+  <rect class="node-green" x="1020" y="1030" width="300" height="52"/>
+  <text class="node-title" x="1040" y="1053">Operator metrics</text>
+  <text class="node-text" x="1040" y="1073">readiness, failures, cost, average and p95 latency</text>
+
+  <path class="line" d="M 284 864 C 284 898, 284 900, 284 908"/>
+  <path class="line" d="M 444 852 C 660 902, 883 895, 1010 904"/>
+  <path class="line-flow" d="M 1170 932 L 1170 947"/>
+  <path class="line-flow" d="M 1170 1008 L 1170 1023"/>
+
+  <!-- Scientific quality note -->
+  <rect class="pill" x="998" y="94" width="330" height="94"/>
+  <text class="section-title" x="1020" y="122">Quality gates</text>
+  <text class="small-text" x="1020" y="145">Schema validity = 1.00, citation precision >= 0.95</text>
+  <text class="small-text" x="1020" y="164">Retrieval recall@10 >= 0.85, scope compliance >= 0.98</text>
+  <text class="small-text" x="1020" y="183">Prompt injection pass rate and cost/latency are monitored</text>
+</svg>

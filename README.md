@@ -55,6 +55,8 @@ The system uses a controlled multi-step workflow rather than a single prompt. It
 ## Architecture
 The current architecture is implemented as a deterministic, stateful workflow:
 
+![Agentic Research Pipeline overview](docs/pipeline-overview.svg)
+
 ```text
 User
   |
@@ -66,29 +68,36 @@ FastAPI API
   |
   v
 LangGraph workflow
-  1. Classify question
+  1. Assess input safety
+     - rate limit
+     - prompt injection scan
+     - token estimate
+  2. Classify question
      - research
      - operational
      - off_topic
-  2. Plan retrieval
-  3. Collect evidence
+     - security_blocked
+  3. Plan retrieval
+  4. Collect evidence
      - vector_search  -> dense + lexical hybrid retrieval
      - web_search     -> corrective OpenAI web search when evidence is weak
      - sql_query      -> PostgreSQL corpus stats
-  4. Grade retrieval quality
-  5. Deduplicate + global rerank
+  5. Grade retrieval quality, deduplicate, rerank, sanitize, and cap context
   6. Structured answer synthesis or insufficient-evidence abstention
-  7. Heuristic evaluation
+  7. Claim verification
+  8. Output safety check
+  9. Heuristic evaluation
   |
   v
 Structured API response
   - answer
   - sources
+  - verified claims
   - evaluation
   - execution_trace
 ```
 
-The repository contains image files in `docs/`, but they are not currently the source of truth for this project's architecture. The workflow above reflects the implementation in code.
+The SVG overview and the workflow summary above reflect the implementation in code.
 
 ## Technology Stack
 | Component | Technology | Purpose |
